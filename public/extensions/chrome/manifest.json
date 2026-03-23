@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Cynode Import Bridge (Chrome)",
+  "version": "1.0.0",
+  "description": "Connects the Cynode web app to Chrome tabs, bookmarks, and history.",
+  "permissions": [
+    "tabs",
+    "bookmarks",
+    "history"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Cynode Import Bridge"
+  },
+  "externally_connectable": {
+    "matches": [
+      "http://*/*",
+      "https://*/*"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}

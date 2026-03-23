@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Cynode Import Bridge (Firefox)",
+  "version": "1.0.0",
+  "description": "Connects the Cynode web app to Firefox tabs, bookmarks, and history.",
+  "permissions": [
+    "tabs",
+    "bookmarks",
+    "history"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Cynode Import Bridge"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "bridge@cynode.app"
+    }
+  }
+}

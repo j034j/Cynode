@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cynode Desktop</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { margin: 0; background: #eef3fb; color: #122033; font-family: "Segoe UI", Arial, sans-serif; }
+    .desktop-shell { max-width: 900px; margin: 36px auto; padding: 0 18px; }
+    .desktop-card { background: #fff; border: 1px solid rgba(17, 24, 39, 0.08); border-radius: 22px; box-shadow: 0 28px 70px rgba(15, 23, 42, 0.12); padding: 28px; }
+    .desktop-kicker { display: inline-block; padding: 6px 12px; border-radius: 999px; background: rgba(11, 95, 255, 0.1); color: #0b5fff; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+    .desktop-title { margin: 14px 0 10px; font-size: 34px; line-height: 1.08; }
+    .desktop-copy { font-size: 15px; line-height: 1.6; color: #4f5d70; max-width: 720px; }
+    .desktop-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+    .desktop-btn { appearance: none; border: none; border-radius: 12px; background: #0b5fff; color: #fff; padding: 12px 18px; font-size: 14px; font-weight: 700; cursor: pointer; text-decoration: none; }
+    .desktop-btn.secondary { background: #edf2fb; color: #163153; border: 1px solid rgba(17, 24, 39, 0.1); }
+    .desktop-status { margin-top: 16px; padding: 14px 16px; border-radius: 16px; background: linear-gradient(135deg, rgba(11, 95, 255, 0.08), rgba(11, 95, 255, 0.03)); border: 1px solid rgba(11, 95, 255, 0.14); color: #33506f; font-size: 14px; line-height: 1.6; }
+    .desktop-status strong { color: #122033; }
+    .desktop-install-steps { margin: 10px 0 0; padding-left: 18px; }
+    .desktop-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 24px; }
+    .desktop-panel { border: 1px solid rgba(17, 24, 39, 0.08); border-radius: 16px; padding: 18px; background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(243,247,255,0.96)); }
+    .desktop-panel h2 { margin: 0 0 10px; font-size: 18px; }
+    .desktop-panel p, .desktop-panel li { color: #536276; line-height: 1.55; font-size: 14px; }
+    .desktop-panel ul { margin: 0; padding-left: 18px; }
+    code, pre { background: #f4f7fb; border-radius: 10px; }
+    code { padding: 2px 6px; }
+    pre { padding: 12px; overflow: auto; font-size: 13px; }
+    @media (max-width: 760px) { .desktop-grid { grid-template-columns: 1fr; } .desktop-title { font-size: 28px; } }
+  </style>
+</head>
+<body>
+  <div class="desktop-shell">
+    <div class="desktop-card">
+      <div class="desktop-kicker">Desktop App</div>
+      <h1 class="desktop-title">Launch Cynode as a full desktop workspace</h1>
+      <p class="desktop-copy">
+        Cynode Desktop mirrors the same account-backed experience as the web app, and now includes a persistent in-app viewer that can load node URLs inside a reusable desktop browsing window instead of spawning endless browser tabs.
+      </p>
+      <div class="desktop-actions">
+        <button id="desktopInstallHelpBtn" class="desktop-btn" type="button">Install / Build Desktop App</button>
+        <button id="launchDesktopBtn" class="desktop-btn" type="button">Launch Installed Desktop App</button>
+        <a class="desktop-btn secondary" href="/extensions/chrome/install.html">Browser Bridge</a>
+      </div>
+      <div id="desktopLaunchStatus" class="desktop-status">
+        <strong>Install is required before launch.</strong> The browser can only open <code>cynode://</code> after Cynode Desktop has been installed or at least started once on this device.
+        <ol class="desktop-install-steps">
+          <li>Download and install Cynode Desktop.</li>
+          <li>Open Cynode Desktop once so Windows registers the <code>cynode://</code> handler.</li>
+          <li>Come back here and use <strong>Launch Installed Desktop App</strong>.</li>
+        </ol>
+      </div>
+      <div class="desktop-grid">
+        <div class="desktop-panel">
+          <h2>What syncs</h2>
+          <ul>
+            <li>Your Cynode account, saved graphs, shares, media, and analytics sync through the same backend.</li>
+            <li>Desktop and web stay aligned when you sign into the same Cynode account.</li>
+            <li>Browser cookies are not imported automatically from Chrome, Edge, or Firefox.</li>
+          </ul>
+        </div>
+        <div class="desktop-panel">
+          <h2>Deep Link Launcher</h2>
+          <p>The installed Electron app registers <code>cynode://</code>, so the web app can ask the OS to launch the desktop app with user consent. If Windows says there is no registered handler, the app is not installed yet.</p>
+          <pre id="desktopLaunchUrl">cynode://open?url=https%3A%2F%2Fexample.com&amp;title=Example</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const sampleUrl = `cynode://open?url=${encodeURIComponent(window.location.origin + '/')}&title=${encodeURIComponent('Cynode Desktop')}`;
+      const pre = document.getElementById('desktopLaunchUrl');
+      const status = document.getElementById('desktopLaunchStatus');
+      if (pre) pre.textContent = sampleUrl;
+      document.getElementById('desktopInstallHelpBtn')?.addEventListener('click', () => {
+        if (!status) return;
+        status.innerHTML = `<strong>Current install path:</strong> run <code>npm install</code>, then <code>npm run desktop:dev</code> for local use, or build an installer with <code>npm run desktop:dist</code>. After the desktop app opens once, Windows can register the <code>cynode://</code> handler for future launches.`;
+      });
+      document.getElementById('launchDesktopBtn')?.addEventListener('click', async () => {
+        if (status) {
+          status.innerHTML = `<strong>Attempting launch...</strong> If nothing opens and the page stays here, Cynode Desktop is not installed yet or Windows has not registered the <code>cynode://</code> handler.`;
+        }
+
+        let sessionId = null;
+        try {
+          const res = await fetch('/api/v1/auth/session-id');
+          const data = await res.json();
+          if (data && data.sessionId) sessionId = data.sessionId;
+        } catch (_) {}
+
+        let launchUrl = sampleUrl;
+        if (sessionId) {
+          launchUrl += `&sid=${encodeURIComponent(sessionId)}`;
+        }
+
+        const startedAt = Date.now();
+        const markFallback = () => {
+          if (!status) return;
+          if (Date.now() - startedAt < 1200) return;
+          status.innerHTML = `<strong>Desktop app not detected.</strong> Windows did not hand off the <code>cynode://</code> link. Install Cynode Desktop first, then open it once before retrying this launch button.`;
+        };
+        window.setTimeout(markFallback, 1600);
+        window.location.href = launchUrl;
+      });
+    })();
+  </script>
+</body>
+</html>

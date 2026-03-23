@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b5fff">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <title>Cynode Analytics</title>
+</head>
+<body class="analytics-page">
+  <div class="analytics-shell">
+    <aside class="analytics-sidebar">
+      <div class="sidepanel-section">
+        <div class="sidepanel-title">Cynode</div>
+        <div class="sidepanel-hint">Analytics V2 for teams, creators, campaigns, and multi-node link funnels.</div>
+        <div class="analytics-sidebar-links">
+          <a class="saved-link" href="/">Back to Graph Builder</a>
+          <a class="saved-link" href="/pricing">Plans and Usage</a>
+        </div>
+      </div>
+
+      <div class="sidepanel-section">
+        <div class="sidepanel-title">Account</div>
+        <div id="analyticsAuthStatus" class="auth-status"></div>
+        <div id="analyticsAuthError" class="auth-error" style="display:none;"></div>
+      </div>
+
+      <div class="sidepanel-section">
+        <div class="sidepanel-title">Filters</div>
+        <label class="auth-label" for="analyticsScope">Scope</label>
+        <select id="analyticsScope" class="settings-select"></select>
+        <label class="auth-label" for="analyticsRange">Range</label>
+        <select id="analyticsRange" class="settings-select">
+          <option value="24h">Last 24 hours</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d" selected>Last 30 days</option>
+          <option value="90d">Last 90 days</option>
+          <option value="365d">Last 365 days</option>
+        </select>
+        <div class="settings-row settings-row-wrap" style="margin-top:10px;">
+          <button id="analyticsRefreshBtn" class="settings-btn" type="button">Refresh</button>
+          <button id="analyticsExportBtn" class="settings-btn" type="button">Export CSV</button>
+        </div>
+        <div id="analyticsLastUpdated" class="settings-hint" style="margin-top:10px;"></div>
+      </div>
+    </aside>
+
+    <main class="analytics-main">
+      <div class="analytics-hero">
+        <div>
+          <div class="analytics-eyebrow">Analytics Dashboard</div>
+          <h1 id="analyticsTitle">Campaign and Link Performance</h1>
+          <p id="analyticsSubtitle">Track views, previews, visits, attribution, and top-performing shared nodegraphs.</p>
+        </div>
+      </div>
+
+      <section class="analytics-grid analytics-grid-cards" id="analyticsCards"></section>
+
+      <section class="analytics-grid analytics-grid-two">
+        <article class="analytics-panel">
+          <div class="analytics-panel-head">
+            <h2>Traffic Trend</h2>
+          </div>
+          <div class="analytics-chart-shell">
+            <canvas id="analyticsTrendChart" class="analytics-chart-canvas"></canvas>
+          </div>
+        </article>
+
+        <article class="analytics-panel">
+          <div class="analytics-panel-head">
+            <h2>Funnel Snapshot</h2>
+          </div>
+          <div class="analytics-chart-shell">
+            <canvas id="analyticsFunnelChart" class="analytics-chart-canvas"></canvas>
+          </div>
+        </article>
+      </section>
+
+      <section class="analytics-grid analytics-grid-three">
+        <article class="analytics-panel">
+          <div class="analytics-panel-head">
+            <h2>Attribution Mix</h2>
+          </div>
+          <div class="analytics-chart-shell">
+            <canvas id="analyticsAttributionChart" class="analytics-chart-canvas"></canvas>
+          </div>
+        </article>
+
+        <article class="analytics-panel">
+          <div class="analytics-panel-head">
+            <h2>Referrers</h2>
+          </div>
+          <div id="analyticsReferrers" class="analytics-table-compact"></div>
+        </article>
+
+        <article class="analytics-panel">
+          <div class="analytics-panel-head">
+            <h2>Audience</h2>
+          </div>
+          <div id="analyticsAudience" class="analytics-table-compact"></div>
+        </article>
+      </section>
+
+      <section class="analytics-grid analytics-grid-two">
+        <article class="analytics-panel">
+          <div class="analytics-panel-head">
+            <h2>Top Campaigns</h2>
+          </div>
+          <div id="analyticsCampaigns" class="analytics-table-compact"></div>
+        </article>
+
+        <article class="analytics-panel">
+          <div class="analytics-panel-head">
+            <h2>Top Topics</h2>
+          </div>
+          <div id="analyticsTopics" class="analytics-table-compact"></div>
+        </article>
+      </section>
+
+      <section class="analytics-panel">
+        <div class="analytics-panel-head">
+          <h2>Top Links</h2>
+          <div class="settings-hint">Click a row to open detailed funnel and attribution for that shared graph.</div>
+        </div>
+        <div class="analytics-table-wrap">
+          <table class="analytics-table">
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Topic</th>
+                <th>Owner</th>
+                <th>Views</th>
+                <th>Unique</th>
+                <th>Previews</th>
+                <th>Visits</th>
+                <th>Preview Rate</th>
+                <th>CTR</th>
+              </tr>
+            </thead>
+            <tbody id="analyticsTopShares"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="analytics-panel" id="analyticsDetailPanel">
+        <div class="analytics-panel-head">
+          <h2 id="analyticsDetailTitle">Link Detail</h2>
+          <div id="analyticsDetailMeta" class="settings-hint"></div>
+        </div>
+        <div class="analytics-grid analytics-grid-two">
+          <div>
+            <h3 class="analytics-subhead">Funnel</h3>
+            <div id="analyticsDetailCards" class="analytics-grid analytics-grid-cards analytics-grid-cards-tight"></div>
+            <div class="analytics-chart-shell" style="margin-top:18px;">
+              <canvas id="analyticsDetailTrendChart" class="analytics-chart-canvas"></canvas>
+            </div>
+          </div>
+          <div>
+            <h3 class="analytics-subhead">Node Performance</h3>
+            <div class="analytics-chart-shell">
+              <canvas id="analyticsNodeChart" class="analytics-chart-canvas"></canvas>
+            </div>
+            <div id="analyticsNodePerformance" class="analytics-table-compact" style="margin-top:14px;"></div>
+          </div>
+        </div>
+        <div class="analytics-grid analytics-grid-three" style="margin-top:20px;">
+          <div>
+            <h3 class="analytics-subhead">Attribution</h3>
+            <div id="analyticsAttribution" class="analytics-table-compact"></div>
+          </div>
+          <div>
+            <h3 class="analytics-subhead">Geo</h3>
+            <div id="analyticsGeo" class="analytics-table-compact"></div>
+          </div>
+          <div>
+            <h3 class="analytics-subhead">Tech</h3>
+            <div id="analyticsTech" class="analytics-table-compact"></div>
+          </div>
+        </div>
+        <div style="margin-top:20px;">
+          <h3 class="analytics-subhead">Top Destination URLs</h3>
+          <div id="analyticsTopUrls" class="analytics-table-compact"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="analytics.js"></script>
+</body>
+</html>

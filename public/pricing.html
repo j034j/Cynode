@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b5fff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <title>Nodex Plans</title>
+  <style>
+    .pricing-wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 60px 16px; }
+    .pricing-top { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
+    .pricing-title { font-size: 18px; font-weight: 900; }
+    .pricing-sub { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+    .pricing-grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-top: 14px; }
+    .plan-card { border:1px solid var(--card-border); background: var(--card-bg); border-radius: 12px; padding: 12px; }
+    .plan-name { font-size: 14px; font-weight: 900; margin-bottom: 6px; }
+    .plan-desc { font-size: 12px; color: var(--muted); line-height: 1.35; margin-bottom: 10px; }
+    .plan-li { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .plan-actions { margin-top: 12px; display:flex; gap:8px; flex-wrap:wrap; }
+    .plan-btn { padding: 10px 10px; border-radius: 10px; border: 1px solid rgba(0,0,0,.15); background:#fff; cursor:pointer; font-size:12px; }
+    html[data-theme="dark"] .plan-btn { background: rgba(25,31,40,.9); border-color: rgba(255,255,255,.18); color: var(--text); }
+    .plan-btn-primary { background: var(--accent); color: #fff; border-color: rgba(0,0,0,.0); }
+    .plan-status { font-size: 12px; color: var(--muted); margin-top: 10px; }
+    .usage-box { border:1px solid var(--card-border); background: var(--card-bg); border-radius: 12px; padding: 12px; margin-top: 12px; }
+    .usage-title { font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .02em; margin-bottom: 8px; }
+    .usage-row { font-size: 12px; color: var(--muted); line-height: 1.4; margin-bottom: 4px; }
+    @media (max-width: 860px) { .pricing-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="pricing-wrap">
+    <div class="pricing-top">
+      <div>
+        <div class="pricing-title">Plans</div>
+        <div class="pricing-sub">Choose your personal plan. Organization plans are managed by org owners in-app (Billing section).</div>
+      </div>
+      <div>
+        <a class="saved-link" href="/">Back to app</a>
+      </div>
+    </div>
+
+    <div id="pricingAuth" class="auth-status"></div>
+    <div id="pricingMsg" class="sidepanel-hint" style="margin-top:6px;"></div>
+
+    <div id="usageBox" class="usage-box" style="display:none;">
+      <div class="usage-title">This Month</div>
+      <div id="usageRows"></div>
+    </div>
+
+    <div id="plansGrid" class="pricing-grid"></div>
+  </div>
+
+  <script src="pricing.js"></script>
+</body>
+</html>

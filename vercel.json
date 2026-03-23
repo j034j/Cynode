@@ -1,0 +1,39 @@
+{
+    "version": 2,
+    "builds": [
+        {
+            "src": "server/dist/index.js",
+            "use": "@vercel/node"
+        }
+    ],
+    "rewrites": [
+        {
+            "source": "/api/(.*)",
+            "destination": "server/dist/index.js"
+        },
+        {
+            "source": "/s/(.*)",
+            "destination": "server/dist/index.js"
+        },
+        {
+            "source": "/docs",
+            "destination": "server/dist/index.js"
+        },
+        {
+            "source": "/pricing",
+            "destination": "pricing.html"
+        },
+        {
+            "source": "/desktop",
+            "destination": "desktop.html"
+        },
+        {
+            "source": "/analytics",
+            "destination": "analytics.html"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "index.html"
+        }
+    ]
+}

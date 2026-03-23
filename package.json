@@ -1,0 +1,86 @@
+{
+  "name": "cynode",
+  "private": true,
+  "type": "module",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "postinstall": "node scripts/postinstall-prisma-win.mjs",
+    "dev": "tsx watch server/src/index.ts",
+    "start": "node server/dist/index.js",
+    "start:prod": "node --enable-source-maps server/dist/index.js",
+    "build": "tsc -p server/tsconfig.json",
+    "desktop:dev": "electron desktop/main.cjs",
+    "desktop:pack": "electron-builder --dir",
+    "desktop:dist": "electron-builder --win nsis portable",
+    "sync:nodex": "node scripts/sync-nodex.mjs",
+    "db:generate": "prisma generate --schema server/prisma/schema.prisma",
+    "db:generate:postgres": "prisma generate --schema server/prisma/schema.postgres.prisma",
+    "db:generate:mysql": "prisma generate --schema server/prisma/schema.mysql.prisma",
+    "db:migrate": "prisma migrate dev --schema server/prisma/schema.prisma",
+    "db:migrate:postgres": "prisma migrate dev --schema server/prisma/schema.postgres.prisma",
+    "db:migrate:mysql": "prisma migrate dev --schema server/prisma/schema.mysql.prisma",
+    "db:studio": "prisma studio --schema server/prisma/schema.prisma",
+    "db:studio:postgres": "prisma studio --schema server/prisma/schema.postgres.prisma",
+    "db:studio:mysql": "prisma studio --schema server/prisma/schema.mysql.prisma"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/multipart": "^9.4.0",
+    "@fastify/oauth2": "^8.2.0",
+    "@fastify/static": "^9.0.0",
+    "@fastify/swagger": "^9.7.0",
+    "@fastify/swagger-ui": "^5.2.5",
+    "@libsql/client": "^0.17.0",
+    "@prisma/adapter-libsql": "^7.5.0",
+    "@prisma/client": "^6.5.0",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.2.1",
+    "fastify-raw-body": "^5.0.0",
+    "fastify-type-provider-zod": "^5.0.0",
+    "geoip-lite": "^1.4.10",
+    "stripe": "^20.4.1",
+    "ua-parser-js": "^2.0.9",
+    "ws": "^8.19.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/geoip-lite": "^1.4.4",
+    "@types/node": "^22.13.10",
+    "@types/ua-parser-js": "^0.7.39",
+    "electron": "^35.0.0",
+    "electron-builder": "^24.13.3",
+    "prisma": "^6.5.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  },
+  "build": {
+    "appId": "com.cynode.desktop",
+    "productName": "Cynode Desktop",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "files": [
+      "desktop/**/*",
+      "package.json"
+    ],
+    "protocols": [
+      {
+        "name": "Cynode Protocol",
+        "schemes": [
+          "cynode"
+        ]
+      }
+    ],
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

@@ -1,0 +1,427 @@
+ <!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b5fff">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <title>Node Graph URL Manager</title>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidepanel" id="sidepanel" aria-label="Account and settings panel">
+      <div class="sidepanel-top">
+        <button id="sidepanelToggle" class="sidepanel-toggle" type="button" aria-label="Toggle side panel"></button>
+        <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle theme"></button>
+      </div>
+
+      <div class="sidepanel-body">
+
+        <div class="sidepanel-section">
+          <div class="sidepanel-title">Account</div>
+          <div id="authStatus" class="auth-status"></div>
+          <div class="auth-buttons">
+            <button id="signInBtn" type="button" title="Sign in to create branded links" style="display:none;">Sign In</button>
+            <button id="signOutBtn" type="button" title="Sign out" style="display:none;">Sign Out</button>
+          </div>
+          <div id="tierOverview" class="sidepanel-hint" style="margin-top:8px;"></div>
+          <div class="sidepanel-hint" style="margin-top:6px;">
+            <a class="saved-link" href="/pricing">Plans and usage</a>
+          </div>
+          <div class="sidepanel-hint" style="margin-top:6px;">
+            <a class="saved-link" href="/desktop">Desktop app</a>
+          </div>
+
+          <div id="authForm" class="auth-form" style="display:none;">
+            <div class="auth-tabs">
+              <button id="authTabLogin" type="button" class="auth-tab auth-tab-active">Sign In</button>
+              <button id="authTabRegister" type="button" class="auth-tab">Sign Up</button>
+            </div>
+
+            <div id="authLoginFields">
+              <label class="auth-label" for="authIdentifier">Email or Handle</label>
+              <input id="authIdentifier" class="auth-input" type="text" autocomplete="username">
+              <label class="auth-label" for="authPassword">Password</label>
+              <input id="authPassword" class="auth-input" type="password" autocomplete="current-password">
+              <button id="authLoginBtn" type="button" class="auth-primary">Sign In</button>
+            </div>
+
+            <div id="authRegisterFields" style="display:none;">
+              <label class="auth-label" for="authHandle">Handle</label>
+              <input id="authHandle" class="auth-input" type="text" autocomplete="username">
+              <label class="auth-label" for="authEmail">Email</label>
+              <input id="authEmail" class="auth-input" type="email" autocomplete="email">
+              <label class="auth-label" for="authNewPassword">Password</label>
+              <input id="authNewPassword" class="auth-input" type="password" autocomplete="new-password">
+              <button id="authRegisterBtn" type="button" class="auth-primary">Create Account</button>
+            </div>
+
+          <div id="authError" class="auth-error" style="display:none;"></div>
+          </div>
+        </div>
+
+        <div class="sidepanel-section">
+          <div class="playback-mode-switcher">
+            <button id="toNormalModeBtn" class="mode-toggle-btn active" type="button">Normal Playback</button>
+            <button id="toEditingModeBtn" class="mode-toggle-btn" type="button">Editing Mode</button>
+          </div>
+          <div id="modeHintText" class="sidepanel-hint" style="margin-top:8px; font-weight: bold; color: #64748b;">
+            Initializing playback modes...
+          </div>
+        </div>
+
+        <div class="sidepanel-section">
+          <div class="sidepanel-title">Saved URL Nodes</div>
+          <div id="savedLinks" class="saved-links"></div>
+        </div>
+
+        <div class="sidepanel-section">
+          <div class="sidepanel-title">Settings</div>
+
+          <div class="settings-block">
+            <div class="settings-label">Playback</div>
+            <div class="settings-row">
+              <label class="settings-inline" for="playbackBaseDelay">Base delay</label>
+              <input id="playbackBaseDelay" class="settings-range" type="range" min="0.5" max="12" step="0.5" value="3">
+              <input id="playbackBaseDelayNum" class="settings-number" type="number" min="0.5" max="12" step="0.5" value="3">
+              <span class="settings-suffix">sec</span>
+            </div>
+            <div class="settings-hint">This is the default pause used between nodes unless a node-specific pause is set below.</div>
+
+            <div class="settings-row settings-row-wrap" style="margin-top:10px;">
+              <label class="settings-inline" for="voiceNodePicker">Choose node to narrate</label>
+              <select id="voiceNodePicker" class="settings-select" title="Choose which node in the current graph you want to narrate"></select>
+            </div>
+            <div id="voiceNodeContext" class="settings-hint"></div>
+
+            <div class="settings-row settings-row-wrap">
+              <label class="settings-inline" for="settingsNodePicker">Selected node</label>
+              <select id="settingsNodePicker" class="settings-select" title="Choose which node in the current graph you want to edit"></select>
+            </div>
+            <div id="settingsNodePickerSummary" class="settings-hint"></div>
+            <div id="settingsNodeContext" class="settings-hint"></div>
+
+            <div class="settings-row">
+              <label class="settings-inline" for="nodePauseOverrideNum">Custom pause for this node</label>
+              <input id="nodePauseOverrideNum" class="settings-number" type="number" min="0.5" max="45" step="0.5" value="3">
+              <span class="settings-suffix">sec</span>
+              <button id="applyNodePauseOverrideBtn" class="settings-btn" type="button" title="Save the custom pause for the chosen node">Save</button>
+              <button id="clearNodePauseOverrideBtn" class="settings-btn" type="button" title="Remove the custom pause so the node uses the default delay">Use Default</button>
+            </div>
+            <div id="playbackSelectedNodeHint" class="settings-hint"></div>
+            <div id="nodePauseOverrideHint" class="settings-hint"></div>
+            <div id="nodePauseOverridesList" class="settings-node-overrides"></div>
+          </div>
+
+          <div class="settings-block">
+            <div class="settings-label">Voice</div>
+            <div class="settings-hint">Voice notes are recorded per node. Use the node picker above to switch which page you are editing.</div>
+            <div class="settings-mini-graph-wrap">
+              <div id="settingsMiniNodeGraph" class="settings-mini-graph"></div>
+            </div>
+
+            <div class="settings-row">
+              <label class="settings-check">
+                <input id="voiceEnabled" type="checkbox">
+                Enable voice annotations
+              </label>
+            </div>
+
+            <div class="settings-row">
+              <label class="settings-check">
+                <input id="voiceAutoplay" type="checkbox" checked>
+                Auto-play voice during playback
+              </label>
+            </div>
+
+            <div class="settings-row">
+              <label class="settings-check">
+                <input id="voiceHold" type="checkbox" checked>
+                Hold playback until voice finishes
+              </label>
+            </div>
+
+            <div class="settings-row settings-row-wrap">
+              <button id="voiceRecBtn" class="settings-btn" type="button">Record</button>
+              <button id="voiceStopBtn" class="settings-btn" type="button" disabled>Stop</button>
+              <button id="voicePlayBtn" class="settings-btn" type="button">Play</button>
+              <button id="voiceClearBtn" class="settings-btn settings-btn-danger" type="button" title="Delete voice annotation for the selected node">Clear</button>
+            </div>
+            <div id="voiceStatus" class="settings-hint"></div>
+          </div>
+
+          <div class="settings-block">
+            <div class="settings-label">Background Audio</div>
+
+            <div class="settings-row">
+              <label class="settings-check">
+                <input id="bgAudioEnabled" type="checkbox">
+                Enable background audio during playback
+              </label>
+            </div>
+
+            <div class="settings-row settings-row-wrap">
+              <label class="settings-inline" for="bgAudioFile">Audio file</label>
+              <input id="bgAudioFile" class="settings-file" type="file" accept="audio/*">
+              <button id="bgAudioClearFileBtn" class="settings-btn settings-btn-danger" type="button" title="Remove the selected background audio file">Clear</button>
+            </div>
+
+            <div class="settings-row settings-row-wrap">
+              <label class="settings-inline" for="bgAudioUrl">Audio URL</label>
+              <input id="bgAudioUrl" class="settings-text" type="text" placeholder="https://... (optional)">
+              <button id="bgAudioUseUrlBtn" class="settings-btn" type="button" title="Use the URL as the background audio source">Use</button>
+            </div>
+
+            <div class="settings-row">
+              <label class="settings-inline" for="bgAudioMode">Sync mode</label>
+              <select id="bgAudioMode" class="settings-select" title="How the track should sync with node changes">
+                <option value="continuous">Continuous loop</option>
+                <option value="restart_per_node">Restart each node</option>
+              </select>
+            </div>
+
+            <div class="settings-row">
+              <label class="settings-inline" for="bgAudioVolume">Volume</label>
+              <input id="bgAudioVolume" class="settings-range" type="range" min="0" max="1" step="0.05" value="0.35">
+              <input id="bgAudioVolumeNum" class="settings-number" type="number" min="0" max="1" step="0.05" value="0.35">
+            </div>
+
+            <div class="settings-row">
+              <label class="settings-check">
+                <input id="bgAudioDuck" type="checkbox" checked>
+                Duck under voice
+              </label>
+            </div>
+
+            <div class="settings-row settings-row-wrap">
+              <button id="bgAudioPreviewPlayBtn" class="settings-btn" type="button">Play</button>
+              <button id="bgAudioPreviewStopBtn" class="settings-btn" type="button">Stop</button>
+            </div>
+            <div id="bgAudioStatus" class="settings-hint"></div>
+          </div>
+        </div>
+
+        <div class="sidepanel-section" id="billingSection" style="display:none;">
+          <div class="sidepanel-title">Billing</div>
+          <div class="sidepanel-hint">Choose an organization plan (OWNER only).</div>
+          <select id="billingOrgSelect" class="settings-select" style="margin-top:8px;"></select>
+          <div id="billingStatus" class="settings-hint" style="margin-top:8px;"></div>
+          <div id="billingPlans" style="margin-top:8px;"></div>
+          <div class="settings-row settings-row-wrap" style="margin-top:10px;">
+            <button id="billingManageBtn" class="settings-btn" type="button">Manage Billing</button>
+          </div>
+          <div id="billingError" class="auth-error" style="display:none;"></div>
+        </div>
+
+        <div class="sidepanel-section" id="dashboardSection" style="display:none;">
+          <div class="sidepanel-title">Dashboard</div>
+          <div class="sidepanel-hint">Views, previews, and visits for your multi-node links.</div>
+          <select id="dashboardScopeSelect" class="settings-select" style="margin-top:8px;"></select>
+          <div id="dashboardList" style="margin-top:10px;"></div>
+          <div id="dashboardDetail" class="settings-hint" style="margin-top:10px;"></div>
+        </div>
+
+        <div class="sidepanel-section">
+          <div class="sidepanel-title">Analytics Dashboard</div>
+          <div class="sidepanel-hint">Full campaign and link-performance tracking.</div>
+          <div style="margin-top:8px;">
+            <a class="saved-link" href="/analytics">Open Dashboard</a>
+          </div>
+        </div>
+
+        <div class="sidepanel-section">
+          <div class="sidepanel-title">Multi-node QR Code</div>
+          <div class="sidepanel-hint">Convert any saved Nodegraph into a multi-link QR code.</div>
+          
+          <div class="settings-row settings-row-wrap" style="margin-top:10px;">
+            <select id="qrSavedGraphSelect" class="settings-select" style="width:100%;">
+              <option value="">-- Select Saved Graph --</option>
+            </select>
+          </div>
+
+          <div class="settings-row" style="margin-top:10px;">
+            <button id="generateQrBtn" class="settings-btn" type="button" style="width:100%; justify-content:center;">Generate Multinode QR</button>
+          </div>
+
+          <div id="qrDisplayArea" style="margin-top:12px; display:flex; flex-direction:column; align-items:center; gap:8px;">
+            <!-- QR code image will appear here -->
+          </div>
+        </div>
+      </div>
+
+      <div class="sidepanel-resizer" id="sidepanelResizer" title="Drag to resize"></div>
+    </aside>
+
+    <main class="app-main">
+      <div class="container">
+        <div id="graphTopicDisplay" class="graph-topic-display"></div>
+        <div class="address-bar" id="addressBar">
+          <div class="address-bar-icons">
+            <button id="playPauseBtn" class="icon-button" title="Play/Pause sequence">
+              <i class="fas fa-play" id="playIcon"></i>
+              <i class="fas fa-pause" id="pauseIcon" style="display: none;"></i>
+            </button>
+          </div>
+          <div class="node-graph" id="nodeGraph"></div>
+        </div>
+        <div class="recent-url-container">
+          <div class="recent-url" id="recentUrl">No node selected</div>
+        </div>
+
+        <!-- Node Controls -->
+        <div class="controls">
+          <div class="node-count-control">
+            <label for="nodeCount">Nodes:</label>
+            <input type="number" id="nodeCount" min="1" max="20" value="8">
+            <button id="setNodeCountBtn" class="set-nodes-btn">Set Count</button>
+          </div>
+          <div class="node-count-control">
+            <label for="nodeTimer">Timer (s):</label>
+            <input type="number" id="nodeTimer" min="1" max="60" value="7">
+            <button id="setNodeTimerBtn" class="set-nodes-btn">Set Timer</button>
+          </div>
+          <button id="addManualBtn">Add URL</button>
+          <button id="addFileBtn" title="Attach a local file (this device only)">Add File</button>
+          <input id="filePicker" type="file" style="display:none" multiple>
+          <button id="importBrowserBtn">Import Browser</button>
+        </div>
+
+        <div class="save-share-row">
+          <label class="save-as-label" for="saveAsSelect">Save as</label>
+          <select id="saveAsSelect" class="save-as-select" title="Choose personal or an organization"></select>
+          <label class="save-as-label" for="topicInput">Topic</label>
+          <input id="topicInput" class="save-as-select" type="text" maxlength="80" placeholder="Optional (e.g., Hiring, DevTools)">
+          <button id="updateSavedBtn" title="Update the currently loaded saved nodegraph URL" style="display:none;">Update Saved</button>
+          <button id="saveBtn" title="Save this nodegraph state to your account">Save</button>
+          <button id="shareBtn" title="Create a share link for this nodegraph">Share</button>
+          <button id="clearAllBtn" style="background-color: #ffeef0; color: #d00; border-color: rgba(220,0,0,0.1);">Clear All</button>
+        </div>
+
+        <!-- Split content container -->
+        <div class="pane-toggle-bar">
+          <button id="previewPaneToggle" class="pane-toggle-btn" type="button" aria-pressed="false" aria-controls="nodeAssociationsPane previewContainer">
+            Expand Preview
+          </button>
+        </div>
+        <div class="split-content" id="splitContent">
+          <div class="url-display" id="nodeAssociationsPane">
+            <div class="pane-header">
+              <h3>Node Associations</h3>
+              <button id="nodeAssociationsToggle" class="pane-inline-toggle" type="button" aria-pressed="false" aria-controls="nodeAssociationsPane previewContainer">
+                Hide Pane
+              </button>
+            </div>
+            <div id="nodeAssociations"></div>
+          </div>
+          <div class="preview-container" id="previewContainer">
+            <div class="pane-header">
+              <h3>Preview</h3>
+            </div>
+            <div id="pageViewer">
+                <!-- iframe will be created by play.js -->
+
+                <!-- Story Mode Overlays (positioned absolutely inside #pageViewer) -->
+                <div class="story-progress" id="storyProgress"></div>
+
+                <div class="story-topic" id="storyTopic"></div>
+
+                <div class="story-counter" id="storyCounter"></div>
+
+                <div class="story-voice-indicator" id="storyVoice">
+                  <div class="voice-bars"><span></span><span></span><span></span><span></span><span></span></div>
+                  Listening
+                </div>
+
+                <div class="story-caption" id="storyCaption">
+                  <div class="story-caption-title" id="storyCaptionTitle"></div>
+                  <div class="story-caption-text" id="storyCaptionText"></div>
+                  <a class="story-caption-url" id="storyCaptionUrl" target="_blank" rel="noopener noreferrer"></a>
+                </div>
+
+                <!-- Navigation tap zones -->
+                <div class="story-nav story-nav-prev" id="storyNavPrev" title="Previous node"></div>
+                <div class="story-nav story-nav-next" id="storyNavNext" title="Next node"></div>
+
+                <!-- Immersive mode toggle -->
+                <button class="immersive-toggle" id="immersiveToggle" type="button" title="Immersive mode">⛶</button>
+            </div>
+          </div>
+          <!-- Immersive exit (sibling so it stays above the fixed overlay) -->
+          <button class="immersive-exit" id="immersiveExit" type="button" title="Exit immersive mode" hidden aria-hidden="true">✕</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- URL Form Modal -->
+  <div id="urlForm" class="modal">
+    <h2>Configure Node URL</h2>
+    <div class="modal-content">
+        <select id="nodeSelector"></select>
+        <input type="text" id="urlInput" placeholder="Enter URL (e.g., google.com)">
+        <input type="text" id="nodeTitleInput" placeholder="Optional Focus Title" style="margin-top:10px; width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid rgba(0,0,0,0.18); border-radius:8px; font-size:12px; outline:none;" onfocus="this.style.borderColor='rgba(11, 95, 255, 0.6)'; this.style.boxShadow='0 0 0 3px rgba(11, 95, 255, 0.12)';" onblur="this.style.borderColor='rgba(0,0,0,0.18)'; this.style.boxShadow='none';">
+        <textarea id="nodeCaptionInput" placeholder="Optional Context / Caption" rows="3" style="width:100%; margin-top:10px; resize:vertical; box-sizing:border-box; padding:8px 10px; border:1px solid rgba(0,0,0,0.18); border-radius:8px; font-family:inherit; font-size:12px; outline:none;" onfocus="this.style.borderColor='rgba(11, 95, 255, 0.6)'; this.style.boxShadow='0 0 0 3px rgba(11, 95, 255, 0.12)';" onblur="this.style.borderColor='rgba(0,0,0,0.18)'; this.style.boxShadow='none';"></textarea>
+        <div class="modal-buttons">
+          <button id="saveUrlBtn">Save</button>
+          <button id="clearUrlBtn">Clear</button>
+          <button id="cancelUrlFormBtn">Cancel</button>
+        </div>
+    </div>
+  </div>
+
+  <!-- Browser Source Modal -->
+  <div id="browserSourceModal" class="modal" style="max-width:720px; width:min(92vw,720px); padding:28px 30px 24px; border-radius:18px;">
+    <h2>Import from Browser</h2>
+    <div class="modal-content">
+      <label for="itemLimit">Number of items to import (max 20):</label>
+      <input type="number" id="itemLimit" min="1" max="20" value="8">
+      <div class="browser-bridge-summary" style="display:flex; gap:12px; align-items:center; justify-content:space-between; padding:12px 14px; border-radius:14px; background:linear-gradient(135deg, rgba(11, 95, 255, 0.08), rgba(11, 95, 255, 0.03)); border:1px solid rgba(11, 95, 255, 0.12);">
+        <div id="browserBridgeStatus" class="settings-hint">Detecting browser bridge status...</div>
+        <button id="browserBridgeRefreshBtn" type="button" style="padding:10px 14px; border:none; border-radius:999px; font-size:13px; font-weight:600; white-space:nowrap;">Detect Extension</button>
+      </div>
+      <div id="browserInstallSlots" class="browser-install-slots" style="display:flex; flex-direction:column; gap:12px;">
+        <a id="browserInstallChrome" class="browser-install-card" data-browser="chrome" href="/extensions/chrome/install.html" target="_blank" rel="noopener noreferrer" style="display:flex; align-items:center; justify-content:space-between; gap:16px; width:100%; box-sizing:border-box; padding:14px 16px; border-radius:14px; border:1px solid rgba(0, 0, 0, 0.12); background:linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(243, 247, 255, 0.96)); text-decoration:none; color:#233142;">
+          <span class="browser-install-main" style="display:flex; flex-direction:column; gap:4px; min-width:0;">
+            <span class="browser-install-title">Chrome</span>
+            <span class="browser-install-copy">Install the Cynode import bridge for Chrome</span>
+          </span>
+          <span class="browser-install-action" style="display:inline-flex; align-items:center; justify-content:center; min-width:84px; padding:9px 14px; border-radius:999px; background:rgba(11, 95, 255, 0.1); color:#0b5fff; font-size:12px; font-weight:700; letter-spacing:0.02em; flex-shrink:0;">Install</span>
+        </a>
+        <a id="browserInstallEdge" class="browser-install-card" data-browser="edge" href="/extensions/edge/install.html" target="_blank" rel="noopener noreferrer" style="display:flex; align-items:center; justify-content:space-between; gap:16px; width:100%; box-sizing:border-box; padding:14px 16px; border-radius:14px; border:1px solid rgba(0, 0, 0, 0.12); background:linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(243, 247, 255, 0.96)); text-decoration:none; color:#233142;">
+          <span class="browser-install-main" style="display:flex; flex-direction:column; gap:4px; min-width:0;">
+            <span class="browser-install-title">Edge</span>
+            <span class="browser-install-copy">Install the Cynode import bridge for Microsoft Edge</span>
+          </span>
+          <span class="browser-install-action" style="display:inline-flex; align-items:center; justify-content:center; min-width:84px; padding:9px 14px; border-radius:999px; background:rgba(11, 95, 255, 0.1); color:#0b5fff; font-size:12px; font-weight:700; letter-spacing:0.02em; flex-shrink:0;">Install</span>
+        </a>
+        <a id="browserInstallFirefox" class="browser-install-card" data-browser="firefox" href="/extensions/firefox/install.html" target="_blank" rel="noopener noreferrer" style="display:flex; align-items:center; justify-content:space-between; gap:16px; width:100%; box-sizing:border-box; padding:14px 16px; border-radius:14px; border:1px solid rgba(0, 0, 0, 0.12); background:linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(243, 247, 255, 0.96)); text-decoration:none; color:#233142;">
+          <span class="browser-install-main" style="display:flex; flex-direction:column; gap:4px; min-width:0;">
+            <span class="browser-install-title">Firefox</span>
+            <span class="browser-install-copy">Install the Cynode import bridge for Firefox</span>
+          </span>
+          <span class="browser-install-action" style="display:inline-flex; align-items:center; justify-content:center; min-width:84px; padding:9px 14px; border-radius:999px; background:rgba(11, 95, 255, 0.1); color:#0b5fff; font-size:12px; font-weight:700; letter-spacing:0.02em; flex-shrink:0;">Install</span>
+        </a>
+      </div>
+      <div class="modal-buttons" style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; margin-top:25px; padding-top:15px; border-top:1px solid #eee; width:100%; box-sizing:border-box;">
+        <button id="importTabsBtn" style="width:100%; min-width:0; box-sizing:border-box; padding:11px 14px; border-radius:12px; font-weight:600;">Import Open Tabs</button>
+        <button id="importBookmarksBtn" style="width:100%; min-width:0; box-sizing:border-box; padding:11px 14px; border-radius:12px; font-weight:600;">Import Recent Bookmarks</button>
+        <button id="importHistoryBtn" style="width:100%; min-width:0; box-sizing:border-box; padding:11px 14px; border-radius:12px; font-weight:600;">Import Recent History</button>
+        <button id="cancelImportBtn" style="width:100%; min-width:0; box-sizing:border-box; padding:11px 14px; border-radius:12px; font-weight:600;">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modalBackdrop"></div>
+
+  <!-- Scripts -->
+  <script src="script.js?v=0323_2150"></script>
+  <script src="play.js?v=0323_2150"></script>
+  <script src="play-desktop.js?v=0323_2150"></script>
+</body>
+</html>

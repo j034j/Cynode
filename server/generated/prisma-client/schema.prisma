@@ -1,0 +1,238 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma-client"
+}
+
+datasource db {
+  // Default local DB: SQLite (set `DATABASE_URL=file:./dev.db`).
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Graph {
+  id               String   @id @default(uuid())
+  nodeCount        Int
+  lastSelectedNode Int?
+  nodes            Node[]
+  shares           Share[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Node {
+  id        String   @id @default(uuid())
+  graphId   String
+  graph     Graph    @relation(fields: [graphId], references: [id], onDelete: Cascade)
+  index     Int
+  url       String?
+  title     String?
+  caption   String?
+  pauseSec  Float?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([graphId, index])
+  @@index([graphId])
+}
+
+model Share {
+  code            String           @id
+  graphId         String
+  graph           Graph            @relation(fields: [graphId], references: [id], onDelete: Cascade)
+  createdByUserId String?
+  createdByUser   User?            @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  organizationId  String?
+  organization    Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  topic           String?
+  saved           Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  media           MediaAsset[]
+  events          AnalyticsEvent[]
+
+  @@index([graphId])
+  @@index([createdByUserId])
+  @@index([organizationId])
+  @@index([saved])
+}
+
+model AnalyticsEvent {
+  id            String   @id @default(uuid())
+  shareCode     String
+  share         Share    @relation(fields: [shareCode], references: [code], onDelete: Cascade)
+  // 'share_view' | 'node_preview' | 'node_visit' | 'play_start' | 'play_stop'
+  type          String
+  nodeIndex     Int?
+  url           String?
+  // hashed viewer fingerprint (privacy-preserving)
+  viewerHash    String?
+  referrer      String?
+  userAgent     String?
+  device        String?
+  os            String?
+  browser       String?
+  country       String?
+  city          String?
+  refererSource String?
+  pagePath      String?
+  utmSource     String?
+  utmMedium     String?
+  utmCampaign   String?
+  utmContent    String?
+  utmTerm       String?
+  createdAt     DateTime @default(now())
+
+  @@index([shareCode])
+  @@index([type])
+  @@index([createdAt])
+  @@index([shareCode, type, createdAt])
+  @@index([utmCampaign])
+  @@index([utmSource])
+  @@index([utmMedium])
+}
+
+model MediaAsset {
+  id           String   @id @default(uuid())
+  shareCode    String
+  share        Share    @relation(fields: [shareCode], references: [code], onDelete: Cascade)
+  // kind: 'bg' (background audio) or 'voice'
+  kind         String
+  // nodeIndex: 0 for background audio, otherwise 1..20 for voice annotations
+  nodeIndex    Int
+  mimeType     String
+  sizeBytes    Int
+  sha256       String
+  originalName String?
+  storagePath  String
+  createdAt    DateTime @default(now())
+
+  @@unique([shareCode, kind, nodeIndex])
+  @@index([shareCode])
+  @@index([kind])
+}
+
+model User {
+  id           String   @id @default(uuid())
+  handle       String   @unique
+  displayName  String?
+  email        String?  @unique
+  passwordHash String?
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  oauthAccounts        OAuthAccount[]
+  memberships          Membership[]
+  sessions             Session[]
+  shares               Share[]
+  organizationsCreated Organization[]    @relation("OrgCreatedBy")
+  subscription         UserSubscription?
+}
+
+model OAuthAccount {
+  id             String   @id @default(uuid())
+  provider       String
+  providerUserId String
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Organization {
+  id              String   @id @default(uuid())
+  name            String
+  slug            String   @unique
+  customDomain    String?  @unique
+  createdByUserId String?
+  createdByUser   User?    @relation("OrgCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  memberships  Membership[]
+  shares       Share[]
+  subscription Subscription?
+
+  @@index([createdByUserId])
+}
+
+model Membership {
+  id             String       @id @default(uuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           String
+  createdAt      DateTime     @default(now())
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+model Subscription {
+  id                     String       @id @default(uuid())
+  organizationId         String       @unique
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider               String // 'stripe' (future: 'paypal', 'paddle', ...)
+  planKey                String // 'free' | 'starter' | 'team' | 'enterprise'
+  status                 String // provider status (e.g. 'active', 'trialing', 'past_due', 'canceled', ...)
+  providerCustomerId     String?
+  providerSubscriptionId String?
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean      @default(false)
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  @@index([provider])
+  @@index([planKey])
+  @@index([status])
+}
+
+model UserSubscription {
+  id                     String    @id @default(uuid())
+  userId                 String    @unique
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider               String // 'stripe'
+  planKey                String // 'free' | 'pro' | 'ultra'
+  status                 String // provider status / 'free'
+  providerCustomerId     String?
+  providerSubscriptionId String?
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean   @default(false)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([provider])
+  @@index([planKey])
+  @@index([status])
+}
+
+model UsageCounter {
+  id                 String   @id @default(uuid())
+  subjectType        String // 'user' | 'org'
+  subjectId          String
+  periodStart        DateTime
+  creditsUsed        Int      @default(0)
+  savedLinksCreated  Int      @default(0)
+  mediaBytesUploaded Int      @default(0)
+  analyticsEvents    Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([subjectType, subjectId, periodStart])
+  @@index([subjectType, subjectId])
+  @@index([periodStart])
+}
