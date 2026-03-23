@@ -1,39 +1,44 @@
 {
     "version": 2,
-    "builds": [
-        {
-            "src": "server/dist/index.js",
-            "use": "@vercel/node"
-        }
-    ],
     "rewrites": [
         {
             "source": "/api/(.*)",
-            "destination": "server/dist/index.js"
+            "destination": "server/src/index.ts"
         },
         {
             "source": "/s/(.*)",
-            "destination": "server/dist/index.js"
+            "destination": "server/src/index.ts"
         },
         {
             "source": "/docs",
-            "destination": "server/dist/index.js"
+            "destination": "server/src/index.ts"
         },
         {
             "source": "/pricing",
-            "destination": "pricing.html"
+            "destination": "public/pricing.html"
         },
         {
             "source": "/desktop",
-            "destination": "desktop.html"
+            "destination": "public/desktop.html"
         },
         {
             "source": "/analytics",
-            "destination": "analytics.html"
+            "destination": "public/analytics.html"
         },
         {
             "source": "/(.*)",
-            "destination": "index.html"
+            "destination": "public/index.html"
+        }
+    ],
+    "headers": [
+        {
+            "source": "/(.*)",
+            "headers": [
+                {
+                    "key": "Content-Security-Policy",
+                    "value": "default-src 'self' *.vercel.com *.vercel.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' *.vercel.com *.vercel.sh; style-src 'self' 'unsafe-inline' *.vercel.com *.vercel.sh; font-src 'self' *.vercel.com *.vercel.sh *.gstatic.com vercel.live r2cdn.perplexity.ai; img-src 'self' data: blob: *; media-src 'self' blob: *; connect-src 'self' *;"
+                }
+            ]
         }
     ]
 }
