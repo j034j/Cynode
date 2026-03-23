@@ -19,7 +19,7 @@ import { closePrisma, getPrisma } from "./db.js";
 import { loadUserFromSession, registerAuthDecorators } from "./auth.js";
 import { registerGithubOAuth } from "./oauth-github.js";
 
-const app = Fastify({ logger: true }).withTypeProvider<ZodTypeProvider>();
+export const app = Fastify({ logger: true }).withTypeProvider<ZodTypeProvider>();
 app.setValidatorCompiler(validatorCompiler);
 app.setSerializerCompiler(serializerCompiler);
 registerAuthDecorators(app);

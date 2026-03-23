@@ -3,15 +3,15 @@
     "rewrites": [
         {
             "source": "/api/(.*)",
-            "destination": "server/src/index.ts"
+            "destination": "/api/server-bridge"
         },
         {
             "source": "/s/(.*)",
-            "destination": "server/src/index.ts"
+            "destination": "/api/server-bridge"
         },
         {
             "source": "/docs",
-            "destination": "server/src/index.ts"
+            "destination": "/api/server-bridge"
         },
         {
             "source": "/pricing",
