@@ -1980,7 +1980,6 @@ async function loadSavedNodeData() {
             } catch (e) { }
         }
         // Handle missing or invalid lastSelectedNode
-        savedLastNode = localStorage.getItem('lastSelectedNode');
         const loadedLastNodeId = parseInt(savedLastNode, 10);
         if (!isNaN(loadedLastNodeId) && loadedLastNodeId >= 1 && loadedLastNodeId <= currentNodeCount && nodeUrls[loadedLastNodeId]) {
             lastSelectedNode = loadedLastNodeId;

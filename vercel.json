@@ -15,19 +15,19 @@
         },
         {
             "source": "/pricing",
-            "destination": "public/pricing.html"
+            "destination": "/pricing.html"
         },
         {
             "source": "/desktop",
-            "destination": "public/desktop.html"
+            "destination": "/desktop.html"
         },
         {
             "source": "/analytics",
-            "destination": "public/analytics.html"
+            "destination": "/analytics.html"
         },
         {
             "source": "/(.*)",
-            "destination": "public/index.html"
+            "destination": "/index.html"
         }
     ],
     "headers": [
@@ -36,7 +36,7 @@
             "headers": [
                 {
                     "key": "Content-Security-Policy",
-                    "value": "default-src 'self' *.vercel.com *.vercel.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' *.vercel.com *.vercel.sh; style-src 'self' 'unsafe-inline' *.vercel.com *.vercel.sh; font-src 'self' *.vercel.com *.vercel.sh *.gstatic.com vercel.live r2cdn.perplexity.ai; img-src 'self' data: blob: *; media-src 'self' blob: *; connect-src 'self' *;"
+                    "value": "default-src 'self' *.vercel.com *.vercel.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' *.vercel.com *.vercel.sh; style-src 'self' 'unsafe-inline' *.vercel.com *.vercel.sh cdnjs.cloudflare.com; font-src 'self' *.vercel.com *.vercel.sh *.gstatic.com vercel.live r2cdn.perplexity.ai cdnjs.cloudflare.com; img-src 'self' data: blob: *; media-src 'self' blob: *; connect-src 'self' *;"
                 }
             ]
         }
