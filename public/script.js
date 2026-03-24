@@ -1883,18 +1883,30 @@ async function loadSavedOrSharedGraphIntoEditor(code, { origin = 'saved', enable
         }
     } catch (_) { }
 
-    // --- Intelligent Mode Sensing (Decoupling) ---
-    // If the loaded graph has overrides (Voice, Custom Pauses, Captions), 
-    // force Editing Mode so they take precedence. Otherwise, force Normal Mode.
-    const hasOverrides = 
-        Object.keys(nodeExtraDelaySecByNode).length > 0 || 
-        Object.keys(nodeCaptions).length > 0 || 
-        (shared.media && shared.media.voiceByNode && Object.keys(shared.media.voiceByNode).length > 0);
-
-    window._isEditingMode = !!hasOverrides;
+    // --- Mode Preservation (Decoupled Timers) ---
+    // IMPORTANT: We PRESERVE the user's explicit mode preference instead of auto-forcing.
+    // The user may have set a specific Normal Mode timer (e.g., 10s) and we must respect that.
+    // Only auto-switch if the user has NEVER explicitly chosen a mode (first load).
+    const storedMode = localStorage.getItem(PLAYBACK_MODE_KEY);
+    
+    // If user has never set a mode preference, use intelligent defaults
+    if (!storedMode) {
+        const hasOverrides = 
+            Object.keys(nodeExtraDelaySecByNode).length > 0 || 
+            Object.keys(nodeCaptions).length > 0 || 
+            (shared.media && shared.media.voiceByNode && Object.keys(shared.media.voiceByNode).length > 0);
+        
+        // Default to Editing Mode only if there are overrides (for voice alignment)
+        window._isEditingMode = !!hasOverrides;
+        console.log(`[PlaybackEngine] First load detected. Auto-sensing: overrides=${hasOverrides}, defaulting to: ${window._isEditingMode ? 'Editing' : 'Normal'} Mode.`);
+    } else {
+        // Respect user's explicit preference
+        window._isEditingMode = storedMode === 'editing';
+        console.log(`[PlaybackEngine] Graph loaded. Preserving user's explicit mode preference: ${storedMode}.`);
+    }
+    
     persistPlaybackSettings();
     if (typeof window._updatePlaybackModeUI === 'function') window._updatePlaybackModeUI();
-    console.log(`[PlaybackEngine] Graph loaded. Auto-sensed overrides: ${hasOverrides}. Mode forced to: ${window._isEditingMode ? 'Editing' : 'Normal'}.`);
 }
 
 function scheduleApiSave({ flush = false } = {}) {
@@ -1982,14 +1994,27 @@ async function loadSavedNodeData() {
                     }
                 }
 
-                // --- Intelligent Mode Sensing (Personal Graph) ---
-                // If loaded data has overrides, default to Editing Mode.
-                const hasOverrides = 
-                    (nodeExtraDelaySecByNode && Object.keys(nodeExtraDelaySecByNode).length > 0) || 
-                    (nodeCaptions && Object.keys(nodeCaptions).length > 0) ||
-                    (graph.media && graph.media.voiceByNode && Object.keys(graph.media.voiceByNode).length > 0);
-
-                window._isEditingMode = !!hasOverrides;
+                // --- Mode Preservation (Decoupled Timers for Personal Graph) ---
+                // IMPORTANT: We PRESERVE the user's explicit mode preference instead of auto-forcing.
+                // Only auto-switch if the user has NEVER explicitly chosen a mode (first load).
+                const storedMode = localStorage.getItem(PLAYBACK_MODE_KEY);
+                
+                // If user has never set a mode preference, use intelligent defaults
+                if (!storedMode) {
+                    const hasOverrides = 
+                        (nodeExtraDelaySecByNode && Object.keys(nodeExtraDelaySecByNode).length > 0) || 
+                        (nodeCaptions && Object.keys(nodeCaptions).length > 0) ||
+                        (graph.media && graph.media.voiceByNode && Object.keys(graph.media.voiceByNode).length > 0);
+                    
+                    // Default to Editing Mode only if there are overrides (for voice alignment)
+                    window._isEditingMode = !!hasOverrides;
+                    console.log(`[PlaybackEngine] Personal graph first load. Auto-sensing: overrides=${hasOverrides}, defaulting to: ${window._isEditingMode ? 'Editing' : 'Normal'} Mode.`);
+                } else {
+                    // Respect user's explicit preference
+                    window._isEditingMode = storedMode === 'editing';
+                    console.log(`[PlaybackEngine] Personal graph loaded. Preserving user's explicit mode preference: ${storedMode}.`);
+                }
+                
                 persistPlaybackSettings();
                 if (typeof window._updatePlaybackModeUI === 'function') window._updatePlaybackModeUI();
 
@@ -2046,14 +2071,27 @@ async function loadSavedNodeData() {
         lastSelectedNode = 1;
     }
     
-    // --- Intelligent Mode Sensing (Final Pass) ---
-    // If loaded data has overrides (voice and captions), default to Editing Mode.
-    const hasOverrides = 
-        Object.keys(nodeExtraDelaySecByNode || {}).length > 0 || 
-        Object.keys(nodeCaptions || {}).length > 0 ||
-        (remoteMedia?.voiceByNode && Object.keys(remoteMedia.voiceByNode).length > 0);
-        
-    window._isEditingMode = !!hasOverrides;
+    // --- Mode Preservation (Final Pass - Legacy Data) ---
+    // IMPORTANT: We PRESERVE the user's explicit mode preference instead of auto-forcing.
+    // Only auto-switch if the user has NEVER explicitly chosen a mode (first load).
+    const storedMode = localStorage.getItem(PLAYBACK_MODE_KEY);
+    
+    // If user has never set a mode preference, use intelligent defaults
+    if (!storedMode) {
+        const hasOverrides = 
+            Object.keys(nodeExtraDelaySecByNode || {}).length > 0 || 
+            Object.keys(nodeCaptions || {}).length > 0 ||
+            (remoteMedia?.voiceByNode && Object.keys(remoteMedia.voiceByNode).length > 0);
+            
+        // Default to Editing Mode only if there are overrides (for voice alignment)
+        window._isEditingMode = !!hasOverrides;
+        console.log(`[PlaybackEngine] Legacy data first load. Auto-sensing: overrides=${hasOverrides}, defaulting to: ${window._isEditingMode ? 'Editing' : 'Normal'} Mode.`);
+    } else {
+        // Respect user's explicit preference
+        window._isEditingMode = storedMode === 'editing';
+        console.log(`[PlaybackEngine] Legacy data loaded. Preserving user's explicit mode preference: ${storedMode}.`);
+    }
+    
     persistPlaybackSettings();
     if (typeof window._updatePlaybackModeUI === 'function') window._updatePlaybackModeUI();
 }
