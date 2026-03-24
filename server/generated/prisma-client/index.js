@@ -281,7 +281,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "c:\\dev0\\cynode\\server\\generated\\prisma-client",
+      "value": "C:\\dev0\\cynode\\server\\generated\\prisma-client",
       "fromEnvVar": null
     },
     "config": {
@@ -295,11 +295,12 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "c:\\dev0\\cynode\\server\\prisma\\schema.prisma",
+    "sourceFilePath": "C:\\dev0\\cynode\\server\\prisma\\schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
-    "rootEnvPath": null
+    "rootEnvPath": null,
+    "schemaEnvPath": "../../../.env"
   },
   "relativePath": "../../prisma",
   "clientVersion": "6.19.2",
@@ -308,6 +309,7 @@ const config = {
     "db"
   ],
   "activeProvider": "sqlite",
+  "postinstall": false,
   "inlineDatasources": {
     "db": {
       "url": {
@@ -326,8 +328,8 @@ const fs = require('fs')
 config.dirname = __dirname
 if (!fs.existsSync(path.join(__dirname, 'schema.prisma'))) {
   const alternativePaths = [
+    "server/generated/prisma-client",
     "generated/prisma-client",
-    "prisma-client",
   ]
   
   const alternativePath = alternativePaths.find((altPath) => {
@@ -357,7 +359,7 @@ Object.assign(exports, Prisma)
 
 // file annotations for bundling tools to include these files
 path.join(__dirname, "query_engine-windows.dll.node");
-path.join(process.cwd(), "generated/prisma-client/query_engine-windows.dll.node")
+path.join(process.cwd(), "server/generated/prisma-client/query_engine-windows.dll.node")
 // file annotations for bundling tools to include these files
 path.join(__dirname, "schema.prisma");
-path.join(process.cwd(), "generated/prisma-client/schema.prisma")
+path.join(process.cwd(), "server/generated/prisma-client/schema.prisma")
