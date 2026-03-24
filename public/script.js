@@ -1985,8 +1985,8 @@ async function loadSavedNodeData() {
                 // --- Intelligent Mode Sensing (Personal Graph) ---
                 // If loaded data has overrides, default to Editing Mode.
                 const hasOverrides = 
-                    Object.keys(nodeExtraDelaySecByNode).length > 0 || 
-                    Object.keys(nodeCaptions).length > 0 ||
+                    (nodeExtraDelaySecByNode && Object.keys(nodeExtraDelaySecByNode).length > 0) || 
+                    (nodeCaptions && Object.keys(nodeCaptions).length > 0) ||
                     (graph.media && graph.media.voiceByNode && Object.keys(graph.media.voiceByNode).length > 0);
 
                 if (hasOverrides) {
