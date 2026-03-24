@@ -31,21 +31,30 @@ export async function loadUserFromSession(req: FastifyRequest): Promise<AuthUser
   const sid = req.cookies?.[SESSION_COOKIE];
   if (typeof sid !== "string" || sid.length < 16) return null;
 
-  const prisma = getPrisma();
-  const session = await prisma.session.findUnique({
-    where: { id: sid },
-    include: { user: true },
-  });
-  if (!session) return null;
-  if (session.expiresAt.getTime() <= Date.now()) return null;
+  try {
+    const prisma = getPrisma();
+    const session = await prisma.session.findUnique({
+      where: { id: sid },
+      include: { user: true },
+    });
+    if (!session) return null;
+    if (session.expiresAt.getTime() <= Date.now()) return null;
 
-  return {
-    id: session.user.id,
-    handle: session.user.handle,
-    displayName: session.user.displayName ?? null,
-    avatarUrl: session.user.avatarUrl ?? null,
-    email: session.user.email ?? null,
-  };
+    return {
+      id: session.user.id,
+      handle: session.user.handle,
+      displayName: session.user.displayName ?? null,
+      avatarUrl: session.user.avatarUrl ?? null,
+      email: session.user.email ?? null,
+    };
+  } catch (err) {
+    // The LibSQL/Prisma adapter can throw when it receives an unexpected wire
+    // response for a missing row (e.g. "Cannot read properties of undefined
+    // (reading 'payload')"). Treat any DB error here as "no session" so a
+    // stale or cross-environment cookie doesn't crash every request.
+    console.warn("[auth] Session lookup failed (stale cookie or DB error); treating as unauthenticated.", err);
+    return null;
+  }
 }
 
 export async function createSessionAndSetCookie(

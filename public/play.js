@@ -15,6 +15,8 @@ let viewerFrame;
 let playPauseBtn;
 let playIcon;
 let pauseIcon;
+let playIconSvg;
+let pauseIconSvg;
 let storyProgressEl;
 let storyCounterEl;
 let storyCaptionEl;
@@ -101,6 +103,8 @@ function setupPlay(config) {
     playPauseBtn = document.getElementById('playPauseBtn');
     playIcon = document.getElementById('playIcon');
     pauseIcon = document.getElementById('pauseIcon');
+    playIconSvg = document.getElementById('playIconSvg');
+    pauseIconSvg = document.getElementById('pauseIconSvg');
     previewContainerEl = document.getElementById('previewContainer');
 
     // Story mode DOM
@@ -407,20 +411,24 @@ function jumpToNode(nodeId) {
 // =====================================================================
 
 function togglePlay() {
-    if (!playIcon || !pauseIcon || !playPauseBtn) return;
+    if (!playPauseBtn) return;
 
     if (!isPlaying) {
         isPlaying = true;
         _playCycleId++; // Start a new sequence "thread"
-        playIcon.style.display = 'none';
-        pauseIcon.style.display = 'inline-block';
+        if (playIcon) playIcon.style.display = 'none';
+        if (pauseIcon) pauseIcon.style.display = 'inline-block';
+        if (playIconSvg) playIconSvg.style.display = 'none';
+        if (pauseIconSvg) pauseIconSvg.style.display = 'inline-block';
         playPauseBtn.title = "Pause sequence";
         startPlaySequence();
     } else {
         isPlaying = false;
         _playCycleId++; // Cancel active recursive calls via ID mismatch
-        playIcon.style.display = 'inline-block';
-        pauseIcon.style.display = 'none';
+        if (playIcon) playIcon.style.display = 'inline-block';
+        if (pauseIcon) pauseIcon.style.display = 'none';
+        if (playIconSvg) playIconSvg.style.display = 'inline-block';
+        if (pauseIconSvg) pauseIconSvg.style.display = 'none';
         playPauseBtn.title = "Play sequence";
         stopPlaySequence();
     }
@@ -570,9 +578,11 @@ function stopPlaySequence() {
     if (playTimer) { clearTimeout(playTimer); playTimer = null; }
     if (isPlaying) {
         isPlaying = false;
-        if (playIcon && pauseIcon && playPauseBtn) {
-            playIcon.style.display = 'inline-block';
-            pauseIcon.style.display = 'none';
+        if (playPauseBtn) {
+            if (playIcon) playIcon.style.display = 'inline-block';
+            if (pauseIcon) pauseIcon.style.display = 'none';
+            if (playIconSvg) playIconSvg.style.display = 'inline-block';
+            if (pauseIconSvg) pauseIconSvg.style.display = 'none';
             playPauseBtn.title = "Play sequence";
         }
     }

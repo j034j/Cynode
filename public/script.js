@@ -731,7 +731,22 @@ function saveNodeDataLegacy() {
     }
 }
 
+function getApiBase() {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return ''; // Localhost uses relative paths
+    }
+    // Desktop check (if running in Electron)
+    if (navigator.userAgent.toLowerCase().includes('electron')) {
+        return 'https://cynode.vercel.app';
+    }
+    // Default to current origin for web/PWA
+    return '';
+}
+
 async function apiJson(path, options) {
+    const baseUrl = getApiBase();
+    const fullPath = path.startsWith('http') ? path : baseUrl + path;
+    
     const init = { ...(options || {}) };
     const body = init.body;
     const hasBody =
@@ -747,7 +762,7 @@ async function apiJson(path, options) {
     else headers.delete('content-type');
     init.headers = headers;
 
-    const res = await fetch(path, init);
+    const res = await fetch(fullPath, init);
     if (!res.ok) {
         const text = await res.text().catch(() => '');
         throw new Error(`API ${res.status} ${res.statusText}${text ? `: ${text}` : ''}`);
@@ -756,7 +771,9 @@ async function apiJson(path, options) {
 }
 
 async function apiUpload(path, formData) {
-    const res = await fetch(path, {
+    const baseUrl = getApiBase();
+    const fullPath = baseUrl + path;
+    const res = await fetch(fullPath, {
         method: 'POST',
         body: formData,
         credentials: 'same-origin',
@@ -772,7 +789,8 @@ async function sendAnalyticsEvent(type, nodeIndex, url) {
     // Only record analytics when we are viewing a share snapshot.
     if (!activeShareCode) return;
     try {
-        await fetch('/api/v1/analytics/event', {
+        const baseUrl = getApiBase();
+        await fetch(baseUrl + '/api/v1/analytics/event', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
@@ -1715,21 +1733,52 @@ async function updateVoiceSettingsForSelectedNode(nodeId) {
 }
 
 async function ensureGraphId() {
-    if (graphId) return graphId;
-    const existing = localStorage.getItem(GRAPH_ID_KEY);
-    if (existing) {
-        graphId = existing;
-        return graphId;
+    // 1. Try URL share code first (Viewing mode)
+    const urlParams = new URLSearchParams(window.location.search);
+    const shareCode = urlParams.get('share');
+    if (shareCode) {
+        try {
+            const graph = await apiJson(`/api/v1/shares/${shareCode}`, { method: 'GET' });
+            if (graph && graph.id) {
+                activeShareCode = shareCode;
+                console.log("[ensureGraphId] Using share code graph:", graph.id);
+                return graph.id;
+            }
+        } catch (e) {
+            console.warn("[ensureGraphId] Could not load share code graph:", e);
+        }
     }
+
+    // 2. Try stored graphId (Persistent editing)
+    let id = localStorage.getItem('graphId');
+    if (id) {
+        try {
+            // Validate with backend
+            const graph = await apiJson(`/api/v1/graphs/${id}`, { method: 'GET' });
+            if (graph && graph.id) {
+                console.log("[ensureGraphId] Reconnected to existing graph:", id);
+                return id;
+            }
+        } catch (e) {
+            console.warn(`[ensureGraphId] Graph ${id} not found on backend, creating new one.`, e);
+            localStorage.removeItem('graphId');
+        }
+    }
+
+    // 3. Create new graph if needed (Standard start)
     try {
-        const created = await apiJson('/api/v1/graphs', { method: 'POST', body: '{}' });
-        if (created && created.id) {
-            graphId = created.id;
-            localStorage.setItem(GRAPH_ID_KEY, graphId);
-            return graphId;
+        const newGraph = await apiJson('/api/v1/graphs', {
+            method: 'POST',
+            body: JSON.stringify({ nodeCount: currentNodeCount })
+        });
+        if (newGraph && newGraph.id) {
+            localStorage.setItem('graphId', newGraph.id);
+            console.log("[ensureGraphId] Created new graph:", newGraph.id);
+            return newGraph.id;
         }
     } catch (e) {
-        console.warn('Backend unavailable; falling back to localStorage persistence.', e);
+        console.error("[ensureGraphId] Catastrophic failure creating graph:", e);
+        return null;
     }
     return null;
 }
@@ -1883,7 +1932,13 @@ function scheduleApiSave({ flush = false } = {}) {
         return;
     }
 
-    pendingSaveTimer = setTimeout(() => void doSave(), 250);
+    pendingSaveTimer = setTimeout(async () => {
+        try {
+            await doSave();
+        } catch (e) {
+            console.warn("[scheduleApiSave] Background save failed:", e);
+        }
+    }, 250);
 }
 
 function saveNodeData(options) {
@@ -2102,7 +2157,7 @@ async function handleNodeClick(nodeId) {
             }
         }
 
-        // Just load the preview
+              // Just load the preview
         if (typeof loadUrlInViewer === 'function') {
             try { await loadUrlInViewer(url, nodeId); } catch (_) { }
         } else {

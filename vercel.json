@@ -2,15 +2,19 @@
     "version": 2,
     "rewrites": [
         {
-            "source": "/api/(.*)",
+            "source": "/api/v1/:path*",
             "destination": "/api/server-bridge"
         },
         {
-            "source": "/s/(.*)",
+            "source": "/s/:code",
             "destination": "/api/server-bridge"
         },
         {
             "source": "/docs",
+            "destination": "/api/server-bridge"
+        },
+        {
+            "source": "/m/:id",
             "destination": "/api/server-bridge"
         },
         {
@@ -36,7 +40,7 @@
             "headers": [
                 {
                     "key": "Content-Security-Policy",
-                    "value": "default-src 'self' *.vercel.app *.vercel.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' *.vercel.app *.vercel.sh cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' *.vercel.app *.vercel.sh cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' data: *.vercel.app *.vercel.sh *.gstatic.com https://fonts.gstatic.com vercel.live r2cdn.perplexity.ai cdnjs.cloudflare.com; img-src 'self' data: blob: *; media-src 'self' blob: *; connect-src 'self' *;"
+                    "value": "default-src 'self' *.vercel.app *.vercel.sh; script-src 'self' 'unsafe-inline' 'unsafe-eval' *.vercel.app *.vercel.sh; style-src 'self' 'unsafe-inline' *.vercel.app *.vercel.sh cdnjs.cloudflare.com https://fonts.googleapis.com; style-src-elem 'self' 'unsafe-inline' *.vercel.app *.vercel.sh cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' data: *.vercel.app *.vercel.sh *.gstatic.com https://fonts.gstatic.com vercel.live r2cdn.perplexity.ai cdnjs.cloudflare.com; img-src 'self' data: blob: *; media-src 'self' blob: *; connect-src 'self' *;"
                 }
             ]
         }
