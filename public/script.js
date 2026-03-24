@@ -1032,7 +1032,7 @@ function readJson(value, fallback) {
 
 function persistPlaybackSettings() {
     try {
-        localStorage.setItem(PLAYBACK_MODE_KEY, isEditingMode ? 'editing' : 'normal');
+        localStorage.setItem(PLAYBACK_MODE_KEY, window._isEditingMode ? 'editing' : 'normal');
         localStorage.setItem(NORMAL_PLAYBACK_DELAY_KEY, String(normalPlaybackDelaySec));
         localStorage.setItem(PLAYBACK_BASE_DELAY_KEY, String(playbackBaseDelaySec));
         localStorage.setItem(NODE_EXTRA_DELAYS_KEY, JSON.stringify(nodeExtraDelaySecByNode || {}));
@@ -1649,8 +1649,8 @@ function setupVoiceSettings() {
         if (nodePauseOverrideNum) nodePauseOverrideNum.value = String(sec);
 
         // UX: Auto-switch to Editing Mode when the user explicitly sets an override.
-        if (!isEditingMode) {
-            isEditingMode = true;
+        if (!window._isEditingMode) {
+            window._isEditingMode = true;
             window._updatePlaybackModeUI?.();
         }
 
@@ -1673,8 +1673,8 @@ function setupVoiceSettings() {
         if (!nodeId) return;
 
         // Start recording implies editing intent.
-        if (!isEditingMode) {
-            isEditingMode = true;
+        if (!window._isEditingMode) {
+            window._isEditingMode = true;
             window._updatePlaybackModeUI?.();
         }
 
@@ -1894,7 +1894,7 @@ async function loadSavedOrSharedGraphIntoEditor(code, { origin = 'saved', enable
     window._isEditingMode = !!hasOverrides;
     persistPlaybackSettings();
     if (typeof window._updatePlaybackModeUI === 'function') window._updatePlaybackModeUI();
-    console.log(`[PlaybackEngine] Graph loaded. Auto-sensed overrides: ${hasOverrides}. Mode forced to: ${isEditingMode ? 'Editing' : 'Normal'}.`);
+    console.log(`[PlaybackEngine] Graph loaded. Auto-sensed overrides: ${hasOverrides}. Mode forced to: ${window._isEditingMode ? 'Editing' : 'Normal'}.`);
 }
 
 function scheduleApiSave({ flush = false } = {}) {
@@ -1989,11 +1989,7 @@ async function loadSavedNodeData() {
                     (nodeCaptions && Object.keys(nodeCaptions).length > 0) ||
                     (graph.media && graph.media.voiceByNode && Object.keys(graph.media.voiceByNode).length > 0);
 
-                if (hasOverrides) {
-                    isEditingMode = true;
-                } else {
-                    isEditingMode = false;
-                }
+                window._isEditingMode = !!hasOverrides;
                 persistPlaybackSettings();
                 if (typeof window._updatePlaybackModeUI === 'function') window._updatePlaybackModeUI();
 
@@ -3745,8 +3741,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         normalPlaybackDelaySec = val;
         
         // UX Enhancement: If they set the normal timer, assume they want to use it
-        if (isEditingMode) {
-            isEditingMode = false;
+        if (window._isEditingMode) {
+            window._isEditingMode = false;
             if (typeof window._updatePlaybackModeUI === 'function') {
                 window._updatePlaybackModeUI();
             }

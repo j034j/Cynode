@@ -60,6 +60,14 @@ export async function storeMultipartAudio(file: MultipartFile, id?: string): Pro
 export async function deleteStoredMedia(storagePath: string): Promise<void> {
   const root = await ensureMediaRoot();
   const abs = path.join(root, storagePath);
+  
+  // Path traversal protection: ensure the resolved path stays within root
+  const resolvedAbs = path.resolve(abs);
+  const resolvedRoot = path.resolve(root);
+  if (!resolvedAbs.startsWith(resolvedRoot + path.sep) && resolvedAbs !== resolvedRoot) {
+    throw new Error("invalid_storage_path");
+  }
+  
   try {
     await fs.unlink(abs);
   } catch (_) {
@@ -70,5 +78,13 @@ export async function deleteStoredMedia(storagePath: string): Promise<void> {
 export async function readStoredMediaStream(storagePath: string): Promise<{ absPath: string }> {
   const root = await ensureMediaRoot();
   const abs = path.join(root, storagePath);
+  
+  // Path traversal protection: ensure the resolved path stays within root
+  const resolvedAbs = path.resolve(abs);
+  const resolvedRoot = path.resolve(root);
+  if (!resolvedAbs.startsWith(resolvedRoot + path.sep) && resolvedAbs !== resolvedRoot) {
+    throw new Error("invalid_storage_path");
+  }
+  
   return { absPath: abs };
 }

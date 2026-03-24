@@ -280,7 +280,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "C:\\dev0\\cynode\\server\\generated\\prisma-client",
+      "value": "c:\\dev0\\cynode\\server\\generated\\prisma-client",
       "fromEnvVar": null
     },
     "config": {
@@ -294,12 +294,11 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "C:\\dev0\\cynode\\server\\prisma\\schema.prisma",
+    "sourceFilePath": "c:\\dev0\\cynode\\server\\prisma\\schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
-    "rootEnvPath": null,
-    "schemaEnvPath": "../../../.env"
+    "rootEnvPath": null
   },
   "relativePath": "../../prisma",
   "clientVersion": "6.19.2",

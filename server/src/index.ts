@@ -7,6 +7,8 @@ import fastifyCookie from "@fastify/cookie";
 import fastifyMultipart from "@fastify/multipart";
 import fastifySwagger from "@fastify/swagger";
 import fastifySwaggerUi from "@fastify/swagger-ui";
+import fastifyCors from "@fastify/cors";
+import fastifyRateLimit from "@fastify/rate-limit";
 import rawBody from "fastify-raw-body";
 import {
   ZodTypeProvider,
@@ -23,6 +25,39 @@ export const app = Fastify({ logger: true }).withTypeProvider<ZodTypeProvider>()
 app.setValidatorCompiler(validatorCompiler);
 app.setSerializerCompiler(serializerCompiler);
 registerAuthDecorators(app);
+
+// Rate limiting - protect against abuse
+const rateLimitConfig = {
+  max: Number(process.env.RATE_LIMIT_MAX) || 100,
+  timeWindow: process.env.RATE_LIMIT_WINDOW || "1 minute",
+  keyGenerator: (req: any) => {
+    // Use X-Forwarded-For if behind a proxy, otherwise use remote IP
+    const forwarded = req.headers["x-forwarded-for"];
+    if (typeof forwarded === "string") {
+      return forwarded.split(",")[0].trim();
+    }
+    return req.ip || "unknown";
+  },
+  // Skip rate limiting for certain paths
+  addHeadersOnExceeding: {
+    "x-ratelimit-limit": true,
+    "x-ratelimit-remaining": true,
+    "x-ratelimit-reset": true,
+  },
+};
+await app.register(fastifyRateLimit, rateLimitConfig);
+
+// CORS configuration
+const corsOrigins = process.env.CORS_ORIGINS?.split(",").map((o) => o.trim()) || ["*"];
+await app.register(fastifyCors, {
+  origin: corsOrigins.length === 1 && corsOrigins[0] === "*"
+    ? true
+    : corsOrigins,
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  exposedHeaders: ["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
+});
 
 // Be tolerant of clients that send `Content-Type: application/json` with an empty body.
 // Fastify's default parser throws `FST_ERR_CTP_EMPTY_JSON_BODY`, which is noisy for DELETE/GET calls.

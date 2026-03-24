@@ -14,8 +14,31 @@ export type AuthUser = {
 const SESSION_COOKIE = "sid";
 const SESSION_TTL_DAYS = 30;
 
+// Allowed hosts for host validation (comma-separated environment variable)
+const ALLOWED_HOSTS = process.env.ALLOWED_HOSTS?.split(",").map((h) => h.trim().toLowerCase()) || [];
+
 export function getSessionCookieName(): string {
   return SESSION_COOKIE;
+}
+
+/**
+ * Validates that the request's Host header is from an allowed domain.
+ * Returns true if the host is allowed or if no ALLOWED_HOSTS are configured (development mode).
+ */
+function isHostAllowed(req: FastifyRequest): boolean {
+  // If no allowed hosts are configured, skip validation (development)
+  if (ALLOWED_HOSTS.length === 0) return true;
+  
+  const hostHeader = typeof req.headers.host === "string" ? req.headers.host.split(":")[0].toLowerCase() : null;
+  if (!hostHeader) return false;
+  
+  // Check exact match or wildcard subdomain match
+  return ALLOWED_HOSTS.some((allowed) => {
+    if (allowed === hostHeader) return true;
+    // Allow subdomains of allowed domains (e.g., www.example.com for example.com)
+    if (allowed.startsWith("*.") && hostHeader.endsWith(allowed.slice(1))) return true;
+    return false;
+  });
 }
 
 function isProbablySecure(req: FastifyRequest): boolean {
@@ -28,6 +51,12 @@ function isProbablySecure(req: FastifyRequest): boolean {
 }
 
 export async function loadUserFromSession(req: FastifyRequest): Promise<AuthUser | null> {
+  // Validate host header to prevent host spoofing attacks
+  if (!isHostAllowed(req)) {
+    console.warn("[auth] Request from disallowed host:", req.headers.host);
+    return null;
+  }
+
   const sid = req.cookies?.[SESSION_COOKIE];
   if (typeof sid !== "string" || sid.length < 16) return null;
 
@@ -62,6 +91,14 @@ export async function createSessionAndSetCookie(
   req: FastifyRequest,
   userId: string,
 ): Promise<void> {
+  // Validate host header to prevent setting cookies for disallowed hosts
+  if (!isHostAllowed(req)) {
+    console.warn("[auth] Attempted to set session cookie from disallowed host:", req.headers.host);
+    const err: any = new Error("forbidden");
+    err.statusCode = 403;
+    throw err;
+  }
+
   const sid = crypto.randomBytes(24).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
 
@@ -80,6 +117,12 @@ export async function createSessionAndSetCookie(
 }
 
 export async function clearSessionCookieAndDb(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  // Validate host header to prevent clearing sessions from disallowed hosts
+  if (!isHostAllowed(req)) {
+    console.warn("[auth] Attempted to clear session from disallowed host:", req.headers.host);
+    return;
+  }
+
   const sid = req.cookies?.[SESSION_COOKIE];
   if (typeof sid === "string" && sid.length > 0) {
     const prisma = getPrisma();
