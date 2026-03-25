@@ -4,12 +4,12 @@
   "type": "module",
   "main": "desktop/main.cjs",
   "scripts": {
-    "postinstall": "node scripts/postinstall-prisma-win.mjs",
+    "postinstall": "node scripts/postinstall-prisma-win.mjs && node scripts/sync-chartjs.mjs",
     "dev": "tsx watch server/src/index.ts",
     "start": "node server/dist/index.js",
     "start:prod": "node --enable-source-maps server/dist/index.js",
-    "build": "prisma generate --schema server/prisma/schema.prisma && tsc -p server/tsconfig.json",
-    "build:turso": "prisma generate --schema server/prisma/schema.turso.prisma && tsc -p server/tsconfig.json",
+    "build": "node scripts/sync-chartjs.mjs && prisma generate --schema server/prisma/schema.prisma && tsc -p server/tsconfig.json",
+    "build:turso": "node scripts/sync-chartjs.mjs && prisma generate --schema server/prisma/schema.turso.prisma && tsc -p server/tsconfig.json",
     "desktop:dev": "electron desktop/main.cjs",
     "desktop:pack": "electron-builder --dir",
     "desktop:dist": "electron-builder --win nsis portable",
@@ -38,6 +38,7 @@
     "@libsql/client": "^0.17.0",
     "@prisma/adapter-libsql": "^7.5.0",
     "@prisma/client": "6.19.2",
+    "chart.js": "^4.5.1",
     "dotenv": "^16.4.5",
     "fastify": "^5.2.1",
     "fastify-raw-body": "^5.0.0",
@@ -90,6 +91,9 @@
       "createStartMenuShortcut": true,
       "installerIcon": "public/icon-512.png",
       "uninstallerIcon": "public/icon-512.png"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
     }
   }
 }

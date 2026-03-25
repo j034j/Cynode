@@ -40,6 +40,9 @@ function emptyLabels(count, prefix) {
 }
 
 function createChart(ctx, config) {
+  if (typeof window.Chart !== 'function') {
+    throw new Error('Chart.js failed to load.');
+  }
   return new Chart(ctx, {
     ...config,
     options: {
@@ -147,6 +150,13 @@ async function main() {
   const techEl = document.getElementById('analyticsTech');
   const topUrlsEl = document.getElementById('analyticsTopUrls');
 
+  if (typeof window.Chart !== 'function') {
+    authStatusEl.textContent = 'Dashboard assets unavailable';
+    authErrorEl.style.display = '';
+    authErrorEl.textContent = 'Chart rendering could not start because the local Chart.js asset was not loaded.';
+    return;
+  }
+
   const colors = chartColors();
   const sharedScale = {
     x: {
@@ -250,7 +260,7 @@ async function main() {
     const query = new URLSearchParams({ scope: scopeEl.value, range: rangeEl.value });
     const detail = await apiJson(`/api/v1/analytics/v2/share/${encodeURIComponent(code)}?${query.toString()}`);
     detailTitleEl.textContent = `Link Detail: ${detail.code}`;
-    detailMetaEl.textContent = `${detail.topic || 'Untitled'} • Created ${relativeDate(detail.createdAt)}`;
+    detailMetaEl.textContent = `${detail.topic || 'Untitled'} - Created ${relativeDate(detail.createdAt)}`;
 
     renderMetricCards(detailCardsEl, [
       { label: 'Views', value: number(detail.totals.views), meta: `${number(detail.totals.uniques)} unique viewers` },
@@ -450,4 +460,15 @@ async function main() {
   await loadOverview();
 }
 
-void main();
+void main().catch((error) => {
+  const authStatusEl = document.getElementById('analyticsAuthStatus');
+  const authErrorEl = document.getElementById('analyticsAuthError');
+
+  if (authStatusEl) authStatusEl.textContent = 'Dashboard unavailable';
+  if (authErrorEl) {
+    authErrorEl.style.display = '';
+    authErrorEl.textContent = error instanceof Error ? error.message : 'The analytics dashboard could not be initialized.';
+  }
+
+  console.error(error);
+});
