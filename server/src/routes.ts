@@ -181,7 +181,7 @@ const OrgCreateSchema = z.object({
 const RegisterSchema = z.object({
   handle: z.string().min(2).max(40).regex(/^[a-zA-Z0-9][a-zA-Z0-9-_]*$/),
   email: z.string().email(),
-  password: z.string().min(8).max(200),
+  password: z.string().min(1).max(200),
   displayName: z.string().min(1).max(80).optional(),
 });
 

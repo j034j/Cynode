@@ -8,7 +8,7 @@
     "dev": "tsx watch server/src/index.ts",
     "start": "node server/dist/index.js",
     "start:prod": "node --enable-source-maps server/dist/index.js",
-    "build": "tsc -p server/tsconfig.json",
+    "build": "prisma generate --schema server/prisma/schema.prisma && tsc -p server/tsconfig.json",
     "desktop:dev": "electron desktop/main.cjs",
     "desktop:pack": "electron-builder --dir",
     "desktop:dist": "electron-builder --win nsis portable",
