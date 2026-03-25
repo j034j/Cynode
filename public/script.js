@@ -1050,8 +1050,9 @@ function persistPlaybackSettings() {
 
 function loadPlaybackSettings() {
     try {
-        // ALWAYS default to Normal Mode on refresh to ensure predictable viewer experience.
-        window._isEditingMode = false;
+        // READ playback mode from localStorage, default to normal for predictable viewer experience
+        const mode = localStorage.getItem(PLAYBACK_MODE_KEY);
+        window._isEditingMode = mode === 'editing';
 
         const norm = localStorage.getItem(NORMAL_PLAYBACK_DELAY_KEY);
         if (norm) normalPlaybackDelaySec = Number(norm) || 7;
