@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { Prisma } from "../generated/prisma-client/index.js";
+import type { Prisma } from "@prisma/client";
 import { getPrisma } from "./db.js";
 
 export type GraphState = {
