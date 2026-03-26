@@ -1,41 +1,44 @@
 {
     "version": 2,
-    "rewrites": [
+    "routes": [
         {
-            "source": "/api/v1/:path*",
-            "destination": "/api/server-bridge"
+            "handle": "filesystem"
         },
         {
-            "source": "/s/:code",
-            "destination": "/api/server-bridge"
+            "src": "/api/v1/(.*)",
+            "dest": "/api/server-bridge"
         },
         {
-            "source": "/docs",
-            "destination": "/api/server-bridge"
+            "src": "/s/([^/]+)",
+            "dest": "/api/server-bridge"
         },
         {
-            "source": "/m/:id",
-            "destination": "/api/server-bridge"
+            "src": "/docs",
+            "dest": "/api/server-bridge"
         },
         {
-            "source": "/pricing",
-            "destination": "/pricing.html"
+            "src": "/m/([^/]+)",
+            "dest": "/api/server-bridge"
         },
         {
-            "source": "/desktop",
-            "destination": "/desktop.html"
+            "src": "/pricing",
+            "dest": "/pricing.html"
         },
         {
-            "source": "/downloads",
-            "destination": "/downloads.html"
+            "src": "/desktop",
+            "dest": "/desktop.html"
         },
         {
-            "source": "/analytics",
-            "destination": "/analytics.html"
+            "src": "/downloads",
+            "dest": "/downloads.html"
         },
         {
-            "source": "/(.*)",
-            "destination": "/index.html"
+            "src": "/analytics",
+            "dest": "/analytics.html"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/index.html"
         }
     ],
     "headers": [
