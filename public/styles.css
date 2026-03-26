@@ -398,6 +398,7 @@ html[data-theme="dark"] #toEditingModeBtn.active {
   padding: 8px 10px;
   border: 1px solid rgba(0, 0, 0, 0.15);
   background: #fff;
+  color: #1f1f1f;
   border-radius: 10px;
   font-size: 12px;
   cursor: pointer;
@@ -1733,19 +1734,16 @@ html[data-theme="dark"] .pane-inline-toggle {
   color: #dce8ff;
 }
 
-html[data-theme="dark"] button,
-html[data-theme="dark"] .theme-toggle,
-html[data-theme="dark"] .sidepanel-toggle,
-html[data-theme="dark"] .mode-toggle-btn,
-html[data-theme="dark"] .auth-tab,
-html[data-theme="dark"] .auth-primary,
-html[data-theme="dark"] .controls button,
-html[data-theme="dark"] .modal-buttons button,
-html[data-theme="dark"] .save-share-row button,
-html[data-theme="dark"] .pane-toggle-btn,
-html[data-theme="dark"] .pane-inline-toggle,
-html[data-theme="dark"] .icon-button {
+html[data-theme="dark"] .settings-btn,
+html[data-theme="dark"] .settings-row .settings-btn,
+html[data-theme="dark"] .settings-row-wrap .settings-btn {
   color: #ff4d4f !important;
+}
+
+html[data-theme="dark"] .settings-btn:disabled,
+html[data-theme="dark"] .settings-row .settings-btn:disabled,
+html[data-theme="dark"] .settings-row-wrap .settings-btn:disabled {
+  color: rgba(255, 77, 79, 0.58) !important;
 }
 
 html[data-theme="dark"] .url-display h3,
