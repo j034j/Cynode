@@ -7,6 +7,7 @@ let currentUser = null;
 let loadedFromSharedGraph = false;
 let currentShareAnalyticsContext = null;
 let currentSavedShareCode = null;
+let currentSavedShareUrl = null;
 
 window._isEditingMode = false; // Global single source of truth for all modules
 let normalPlaybackDelaySec = 7;
@@ -176,7 +177,7 @@ function setupDeviceMode() {
 function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     // Best-effort; failures should not impact core UI.
-    navigator.serviceWorker.register('/sw.js?v=0326_assetfix').catch(() => { });
+    navigator.serviceWorker.register('/sw.js?v=0326_qrfix').catch(() => { });
 }
 
 function setPreviewPaneExpanded(expanded, options = {}) {
@@ -303,6 +304,7 @@ function readLastActiveGraphForUser(user = currentUser) {
         return {
             code: String(parsed.code),
             origin: parsed.origin === 'share' ? 'share' : 'saved',
+            shareUrl: parsed.shareUrl ? String(parsed.shareUrl) : null,
             updatedAt: parsed.updatedAt ? String(parsed.updatedAt) : null,
         };
     } catch (_) {
@@ -327,14 +329,16 @@ function inferLastActiveGraphFromTopicOrigin(origin = graphTopicOrigin) {
     return null;
 }
 
-function writeLastActiveGraphForUser(code, { origin = 'saved', user = currentUser } = {}) {
+function writeLastActiveGraphForUser(code, { origin = 'saved', shareUrl = null, user = currentUser } = {}) {
     const storageKey = getLastActiveGraphStorageKey(user);
     const normalizedCode = String(code || '').trim();
+    const normalizedShareUrl = typeof shareUrl === 'string' && shareUrl.trim() ? shareUrl.trim() : null;
     if (!storageKey || !normalizedCode) return;
     try {
         localStorage.setItem(storageKey, JSON.stringify({
             code: normalizedCode,
             origin: origin === 'share' ? 'share' : 'saved',
+            shareUrl: normalizedShareUrl,
             updatedAt: new Date().toISOString(),
         }));
     } catch (_) { }
@@ -1025,6 +1029,7 @@ function setGraphTopicFromInput(value) {
     const trimmed = graphTopic.trim();
     graphTopicOrigin = 'draft';
     currentSavedShareCode = null;
+    currentSavedShareUrl = null;
     updateUpdateSavedButton();
 
     try {
@@ -1047,6 +1052,7 @@ function setGraphTopicFromExternal(value, origin) {
         graphTopicOrigin = null;
     }
     currentSavedShareCode = graphTopicOrigin && graphTopicOrigin.startsWith('saved:') ? graphTopicOrigin.slice(6) : null;
+    if (!currentSavedShareCode) currentSavedShareUrl = null;
     updateUpdateSavedButton();
 
     try {
@@ -1888,12 +1894,13 @@ async function tryLoadShareFromUrl() {
     }
 }
 
-async function loadSavedOrSharedGraphIntoEditor(code, { origin = 'saved', enableShareAnalytics = false, editableAsShared = false } = {}) {
+async function loadSavedOrSharedGraphIntoEditor(code, { origin = 'saved', enableShareAnalytics = false, editableAsShared = false, shareUrl = null } = {}) {
     const shared = await apiJson(`/api/v1/shares/${encodeURIComponent(code)}`, { method: 'GET' });
     activeShareCode = enableShareAnalytics ? code : null;
     loadedFromSharedGraph = !!editableAsShared;
     currentSavedShareCode = origin === 'saved' ? code : null;
-    writeLastActiveGraphForUser(code, { origin });
+    currentSavedShareUrl = origin === 'saved' ? (shareUrl || createSavedGraphUrl(code)) : null;
+    writeLastActiveGraphForUser(code, { origin, shareUrl: currentSavedShareUrl });
     updateUpdateSavedButton();
     if (enableShareAnalytics) void sendAnalyticsEvent('share_view');
 
@@ -3353,6 +3360,7 @@ async function restoreLastActiveGraphForSignedInUser() {
             origin: restoreTarget.origin === 'share' ? 'share' : 'saved',
             enableShareAnalytics: false,
             editableAsShared: false,
+            shareUrl: restoreTarget.shareUrl || null,
         });
 
         if (hasValidUrls()) {
@@ -3367,7 +3375,12 @@ async function restoreLastActiveGraphForSignedInUser() {
 }
 
 function createSavedGraphUrl(code) {
-    return `${window.location.origin}/v/${encodeURIComponent(String(code || '').trim())}`;
+    const normalizedCode = encodeURIComponent(String(code || '').trim());
+    if (!normalizedCode) return window.location.origin;
+    const namespace = currentUser && currentUser.handle ? encodeURIComponent(String(currentUser.handle)) : '';
+    return namespace
+        ? `${window.location.origin}/${namespace}/${normalizedCode}`
+        : `${window.location.origin}/s/${normalizedCode}`;
 }
 
 function getSelectedQrDownloadSource(container) {
@@ -3583,7 +3596,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Add current active graph if shared
             if (currentSavedShareCode) {
                 const optCurrent = document.createElement('option');
-                optCurrent.value = createSavedGraphUrl(currentSavedShareCode);
+                optCurrent.value = currentSavedShareUrl || createSavedGraphUrl(currentSavedShareCode);
                 optCurrent.textContent = `★ Current: ${graphTopic || currentSavedShareCode}`;
                 qrSelect.appendChild(optCurrent);
             }
@@ -3670,7 +3683,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
                 if (!it.code) return;
                 try {
-                    await loadSavedOrSharedGraphIntoEditor(it.code, { origin: 'saved', enableShareAnalytics: false, editableAsShared: false });
+                    await loadSavedOrSharedGraphIntoEditor(it.code, { origin: 'saved', enableShareAnalytics: false, editableAsShared: false, shareUrl: it.shareUrl || null });
                 } catch (err) {
                     console.warn('Failed to load saved nodegraph into editor', err);
                     alert('Unable to load that saved nodegraph into the main editor.');
@@ -3685,7 +3698,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 e.preventDefault();
                 if (!it.code) return;
                 try {
-                    await loadSavedOrSharedGraphIntoEditor(it.code, { origin: 'saved', enableShareAnalytics: false, editableAsShared: false });
+                    await loadSavedOrSharedGraphIntoEditor(it.code, { origin: 'saved', enableShareAnalytics: false, editableAsShared: false, shareUrl: it.shareUrl || null });
                 } catch (err) {
                     console.warn('Failed to load saved nodegraph into editor', err);
                     alert('Unable to load that saved nodegraph into the main editor.');
@@ -4245,7 +4258,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     graphTopicOrigin = `saved:${res.code}`;
                     try { localStorage.setItem(GRAPH_TOPIC_ORIGIN_KEY, graphTopicOrigin); } catch (_) { }
                     currentSavedShareCode = res.code;
-                    writeLastActiveGraphForUser(res.code, { origin: 'saved' });
+                    currentSavedShareUrl = res.shareUrl || createSavedGraphUrl(res.code);
+                    writeLastActiveGraphForUser(res.code, { origin: 'saved', shareUrl: currentSavedShareUrl });
                     updateUpdateSavedButton();
                 }
 
@@ -4287,7 +4301,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     topic: graphTopic || undefined,
                 }),
             });
-            writeLastActiveGraphForUser(currentSavedShareCode, { origin: 'saved' });
+            if (res && res.shareUrl) currentSavedShareUrl = res.shareUrl;
+            writeLastActiveGraphForUser(currentSavedShareCode, { origin: 'saved', shareUrl: currentSavedShareUrl });
             try { await uploadSavedMedia(currentSavedShareCode, exportSnapshot); } catch (_) { }
             if (res && res.shareUrl) {
                 await refreshSavedLinks();
