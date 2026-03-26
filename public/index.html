@@ -381,7 +381,7 @@
   </div>
 
   <!-- Browser Source Modal -->
-  <div id="browserSourceModal" class="modal" style="max-width:720px; width:min(92vw,720px); padding:28px 30px 24px; border-radius:18px;">
+  <div id="browserSourceModal" class="modal browser-source-modal">
     <h2>Import from Browser</h2>
     <div class="modal-content">
       <p class="browser-import-intro settings-hint">Bring open tabs, recent bookmarks, or recent history into the current graph. Existing URLs in the imported nodes will be replaced.</p>
@@ -400,39 +400,39 @@
             <div id="browserBridgeMeta" class="browser-bridge-meta">Open the Cynode bridge extension for your current browser if it is not detected automatically.</div>
           </div>
         </div>
-        <button id="browserBridgeRefreshBtn" type="button" style="padding:10px 14px; border:none; border-radius:999px; font-size:13px; font-weight:600; white-space:nowrap;">Detect Extension</button>
+        <button id="browserBridgeRefreshBtn" type="button">Detect Extension</button>
       </div>
-      <div id="browserInstallSlots" class="browser-install-slots" style="display:flex; flex-direction:column; gap:12px;">
-        <a id="browserInstallChrome" class="browser-install-card" data-browser="chrome" href="/extensions/chrome/install.html" target="_blank" rel="noopener noreferrer" style="display:flex; align-items:center; justify-content:space-between; gap:16px; width:100%; box-sizing:border-box; padding:14px 16px; border-radius:14px; border:1px solid rgba(0, 0, 0, 0.12); background:linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(243, 247, 255, 0.96)); text-decoration:none; color:#233142;">
-          <span class="browser-install-main" style="display:flex; flex-direction:column; gap:4px; min-width:0;">
+      <div id="browserInstallSlots" class="browser-install-slots">
+        <a id="browserInstallChrome" class="browser-install-card" data-browser="chrome" href="/extensions/chrome/install.html" target="_blank" rel="noopener noreferrer">
+          <span class="browser-install-main">
             <span class="browser-install-title">Chrome</span>
             <span class="browser-install-copy">Install the Cynode import bridge for Chrome</span>
           </span>
-          <span class="browser-install-action" style="display:inline-flex; align-items:center; justify-content:center; min-width:84px; padding:9px 14px; border-radius:999px; background:rgba(11, 95, 255, 0.1); color:#0b5fff; font-size:12px; font-weight:700; letter-spacing:0.02em; flex-shrink:0;">Install</span>
+          <span class="browser-install-action">Install</span>
         </a>
-        <a id="browserInstallEdge" class="browser-install-card" data-browser="edge" href="/extensions/edge/install.html" target="_blank" rel="noopener noreferrer" style="display:flex; align-items:center; justify-content:space-between; gap:16px; width:100%; box-sizing:border-box; padding:14px 16px; border-radius:14px; border:1px solid rgba(0, 0, 0, 0.12); background:linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(243, 247, 255, 0.96)); text-decoration:none; color:#233142;">
-          <span class="browser-install-main" style="display:flex; flex-direction:column; gap:4px; min-width:0;">
+        <a id="browserInstallEdge" class="browser-install-card" data-browser="edge" href="/extensions/edge/install.html" target="_blank" rel="noopener noreferrer">
+          <span class="browser-install-main">
             <span class="browser-install-title">Edge</span>
             <span class="browser-install-copy">Install the Cynode import bridge for Microsoft Edge</span>
           </span>
-          <span class="browser-install-action" style="display:inline-flex; align-items:center; justify-content:center; min-width:84px; padding:9px 14px; border-radius:999px; background:rgba(11, 95, 255, 0.1); color:#0b5fff; font-size:12px; font-weight:700; letter-spacing:0.02em; flex-shrink:0;">Install</span>
+          <span class="browser-install-action">Install</span>
         </a>
-        <a id="browserInstallFirefox" class="browser-install-card" data-browser="firefox" href="/extensions/firefox/install.html" target="_blank" rel="noopener noreferrer" style="display:flex; align-items:center; justify-content:space-between; gap:16px; width:100%; box-sizing:border-box; padding:14px 16px; border-radius:14px; border:1px solid rgba(0, 0, 0, 0.12); background:linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(243, 247, 255, 0.96)); text-decoration:none; color:#233142;">
-          <span class="browser-install-main" style="display:flex; flex-direction:column; gap:4px; min-width:0;">
+        <a id="browserInstallFirefox" class="browser-install-card" data-browser="firefox" href="/extensions/firefox/install.html" target="_blank" rel="noopener noreferrer">
+          <span class="browser-install-main">
             <span class="browser-install-title">Firefox</span>
             <span class="browser-install-copy">Install the Cynode import bridge for Firefox</span>
           </span>
-          <span class="browser-install-action" style="display:inline-flex; align-items:center; justify-content:center; min-width:84px; padding:9px 14px; border-radius:999px; background:rgba(11, 95, 255, 0.1); color:#0b5fff; font-size:12px; font-weight:700; letter-spacing:0.02em; flex-shrink:0;">Install</span>
+          <span class="browser-install-action">Install</span>
         </a>
       </div>
       <div id="browserImportFeedback" class="browser-import-feedback browser-import-feedback--info" aria-live="polite">
         Choose a source to replace the first matching nodes in this graph.
       </div>
-      <div class="modal-buttons" style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; margin-top:25px; padding-top:15px; border-top:1px solid #eee; width:100%; box-sizing:border-box;">
-        <button id="importTabsBtn" style="width:100%; min-width:0; box-sizing:border-box; padding:11px 14px; border-radius:12px; font-weight:600;">Import Open Tabs</button>
-        <button id="importBookmarksBtn" style="width:100%; min-width:0; box-sizing:border-box; padding:11px 14px; border-radius:12px; font-weight:600;">Import Recent Bookmarks</button>
-        <button id="importHistoryBtn" style="width:100%; min-width:0; box-sizing:border-box; padding:11px 14px; border-radius:12px; font-weight:600;">Import Recent History</button>
-        <button id="cancelImportBtn" style="width:100%; min-width:0; box-sizing:border-box; padding:11px 14px; border-radius:12px; font-weight:600;">Cancel</button>
+      <div class="modal-buttons browser-import-actions">
+        <button id="importTabsBtn" type="button">Import Open Tabs</button>
+        <button id="importBookmarksBtn" type="button">Import Recent Bookmarks</button>
+        <button id="importHistoryBtn" type="button">Import Recent History</button>
+        <button id="cancelImportBtn" type="button">Cancel</button>
       </div>
     </div>
   </div>

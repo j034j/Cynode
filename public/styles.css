@@ -1304,6 +1304,7 @@ body.shared-readonly-mode textarea:disabled {
   padding: 28px 30px 24px;
   border-radius: 18px;
   box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
 }
 .modal.visible {
     opacity: 1;
@@ -1391,6 +1392,10 @@ body.shared-readonly-mode textarea:disabled {
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  text-align: left;
+  font-style: normal;
+  transform: none;
+  writing-mode: horizontal-tb;
 }
 
 .browser-bridge-badge {
@@ -1427,6 +1432,8 @@ body.shared-readonly-mode textarea:disabled {
 .browser-import-intro {
   margin: 0 0 14px;
   line-height: 1.55;
+  text-align: left;
+  font-style: normal;
 }
 
 .browser-import-limit-row {
@@ -1544,17 +1551,23 @@ body.shared-readonly-mode textarea:disabled {
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  text-align: left;
+  font-style: normal;
+  transform: none;
+  writing-mode: horizontal-tb;
 }
 
 #browserSourceModal .browser-install-title {
   font-size: 15px;
   font-weight: 700;
+  font-style: normal;
 }
 
 #browserSourceModal .browser-install-copy {
   font-size: 12px;
   line-height: 1.4;
   color: #51606f;
+  font-style: normal;
 }
 
 #browserSourceModal .browser-install-action {
@@ -1589,6 +1602,14 @@ body.shared-readonly-mode textarea:disabled {
   display: grid !important;
   grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   align-items: stretch;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#browserSourceModal .browser-import-actions {
+  margin-top: 25px;
+  padding-top: 15px;
+  border-top: 1px solid #eee;
 }
 
 /* --- Dark Mode Readability Overrides (for legacy light styles) --- */
