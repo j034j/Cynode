@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Download Cynode Desktop</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { margin: 0; background: radial-gradient(circle at top left, rgba(11,95,255,0.16), transparent 30%), #eef3fb; color: #122033; font-family: "Segoe UI", Arial, sans-serif; }
+    .downloads-shell { max-width: 1120px; margin: 0 auto; padding: 40px 20px 64px; }
+    .downloads-hero { background: rgba(255,255,255,0.92); border: 1px solid rgba(17,24,39,0.08); border-radius: 28px; box-shadow: 0 28px 70px rgba(15,23,42,0.14); padding: 32px; }
+    .downloads-kicker { display: inline-block; padding: 6px 12px; border-radius: 999px; background: rgba(11,95,255,0.1); color: #0b5fff; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+    .downloads-title { margin: 14px 0 10px; font-size: 40px; line-height: 1.05; }
+    .downloads-copy { max-width: 760px; font-size: 16px; line-height: 1.65; color: #526173; }
+    .downloads-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
+    .downloads-btn { display: inline-flex; align-items: center; justify-content: center; padding: 13px 18px; border-radius: 14px; text-decoration: none; font-size: 14px; font-weight: 700; border: 1px solid rgba(17,24,39,0.1); background: #0b5fff; color: #fff; }
+    .downloads-btn.secondary { background: #f4f7fc; color: #17304f; }
+    .downloads-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 24px; }
+    .downloads-card { background: rgba(255,255,255,0.96); border: 1px solid rgba(17,24,39,0.08); border-radius: 22px; box-shadow: 0 18px 50px rgba(15,23,42,0.1); padding: 24px; }
+    .downloads-card h2 { margin: 0 0 10px; font-size: 24px; }
+    .downloads-card p { margin: 0 0 14px; color: #536276; line-height: 1.6; font-size: 14px; }
+    .downloads-card ul { margin: 0 0 18px; padding-left: 18px; color: #536276; line-height: 1.6; font-size: 14px; }
+    .downloads-card code { background: #f4f7fb; border-radius: 8px; padding: 2px 6px; }
+    .downloads-meta { margin-top: 12px; color: #64748b; font-size: 13px; }
+    .downloads-status { margin-top: 16px; padding: 14px 16px; border-radius: 16px; background: rgba(11,95,255,0.07); border: 1px solid rgba(11,95,255,0.12); color: #40566f; font-size: 14px; line-height: 1.55; }
+    .downloads-footer { margin-top: 22px; font-size: 14px; color: #5f6f82; }
+    @media (max-width: 960px) { .downloads-grid { grid-template-columns: 1fr; } .downloads-title { font-size: 32px; } }
+  </style>
+</head>
+<body>
+  <div class="downloads-shell">
+    <section class="downloads-hero">
+      <div class="downloads-kicker">Desktop Downloads</div>
+      <h1 class="downloads-title">Install Cynode Desktop on Windows, macOS, or Linux</h1>
+      <p class="downloads-copy">
+        Cynode Desktop gives you the same account-backed workspace as the web app, but with a dedicated installed application, persistent sign-in, a reusable in-app viewer, and desktop shortcuts that launch straight into Cynode.
+      </p>
+      <div class="downloads-actions">
+        <a id="downloadsLatestBtn" class="downloads-btn" href="https://github.com/j034j/Cynode/releases/latest" target="_blank" rel="noopener noreferrer">Open Latest Releases</a>
+        <a class="downloads-btn secondary" href="/desktop">Desktop Overview</a>
+        <a class="downloads-btn secondary" href="/">Back to App</a>
+      </div>
+      <div id="downloadsStatus" class="downloads-status">
+        Checking the latest Cynode Desktop release so these buttons can point at the exact installer files.
+      </div>
+
+      <div class="downloads-grid">
+        <article class="downloads-card">
+          <h2>Windows</h2>
+          <p>Recommended for most users. Install once, sign in once, and then launch Cynode Desktop from the Start Menu or desktop shortcut.</p>
+          <ul>
+            <li>Primary target: Windows installer built with NSIS.</li>
+            <li>Also available: portable Windows executable for no-install environments.</li>
+            <li>After first launch, Windows registers the <code>cynode://</code> handler for deep links from the web app.</li>
+          </ul>
+          <a id="downloadsWindowsBtn" class="downloads-btn" href="https://github.com/j034j/Cynode/releases/latest" target="_blank" rel="noopener noreferrer">Download for Windows</a>
+          <div id="downloadsWindowsMeta" class="downloads-meta">Looking for the latest Windows installer asset.</div>
+        </article>
+
+        <article class="downloads-card">
+          <h2>macOS</h2>
+          <p>Configured for DMG and ZIP release packaging so Mac users can install Cynode Desktop as a native app.</p>
+          <ul>
+            <li>Targets configured: <code>dmg</code> and <code>zip</code>.</li>
+            <li>Architectures configured: Intel and Apple Silicon.</li>
+            <li>For signed public distribution, the final release build should be produced on macOS.</li>
+          </ul>
+          <a id="downloadsMacBtn" class="downloads-btn" href="https://github.com/j034j/Cynode/releases/latest" target="_blank" rel="noopener noreferrer">Download for macOS</a>
+          <div id="downloadsMacMeta" class="downloads-meta">Looking for the latest macOS desktop package.</div>
+        </article>
+
+        <article class="downloads-card">
+          <h2>Linux</h2>
+          <p>Configured for AppImage, Debian packages, and tarballs so Linux users have a straightforward install path too.</p>
+          <ul>
+            <li>Targets configured: <code>AppImage</code>, <code>deb</code>, and <code>tar.gz</code>.</li>
+            <li>Architectures configured: x64 and arm64 where supported.</li>
+            <li>Best for users who want a local desktop launcher without keeping a browser tab open.</li>
+          </ul>
+          <a id="downloadsLinuxBtn" class="downloads-btn" href="https://github.com/j034j/Cynode/releases/latest" target="_blank" rel="noopener noreferrer">Download for Linux</a>
+          <div id="downloadsLinuxMeta" class="downloads-meta">Looking for the latest Linux desktop package.</div>
+        </article>
+      </div>
+
+      <p class="downloads-footer">
+        Signed into Cynode Desktop once? Your Electron session stays persisted, so future launches can happen directly from the installed app icon without returning to the browser first.
+      </p>
+    </section>
+  </div>
+  <script>
+    (function () {
+      const repoLatestUrl = 'https://github.com/j034j/Cynode/releases/latest';
+      const apiUrl = 'https://api.github.com/repos/j034j/Cynode/releases/latest';
+      const statusEl = document.getElementById('downloadsStatus');
+      const latestBtn = document.getElementById('downloadsLatestBtn');
+
+      const linkTargets = {
+        windows: {
+          button: document.getElementById('downloadsWindowsBtn'),
+          meta: document.getElementById('downloadsWindowsMeta'),
+          patterns: ['nsis', 'setup', '.exe', 'portable.exe'],
+          fallback: 'Windows assets have not been published yet. Opening the release page instead.',
+        },
+        mac: {
+          button: document.getElementById('downloadsMacBtn'),
+          meta: document.getElementById('downloadsMacMeta'),
+          patterns: ['.dmg', '-mac-', '.zip'],
+          fallback: 'macOS assets have not been published yet. Opening the release page instead.',
+        },
+        linux: {
+          button: document.getElementById('downloadsLinuxBtn'),
+          meta: document.getElementById('downloadsLinuxMeta'),
+          patterns: ['.appimage', '.deb', '.tar.gz'],
+          fallback: 'Linux assets have not been published yet. Opening the release page instead.',
+        },
+      };
+
+      function scoreAsset(name, patterns) {
+        const lower = name.toLowerCase();
+        let score = 0;
+        for (const pattern of patterns) {
+          if (lower.includes(pattern)) score += 2;
+        }
+        if (lower.includes('cynode')) score += 1;
+        if (lower.includes('desktop')) score += 1;
+        if (lower.includes('arm64')) score -= 1;
+        return score;
+      }
+
+      function pickAsset(assets, patterns) {
+        return [...assets]
+          .map((asset) => ({ asset, score: scoreAsset(asset.name || '', patterns) }))
+          .filter((entry) => entry.score > 0)
+          .sort((a, b) => b.score - a.score)[0]?.asset || null;
+      }
+
+      function setPlatformLink(target, asset) {
+        if (!target.button || !target.meta) return;
+        if (asset && asset.browser_download_url) {
+          target.button.href = asset.browser_download_url;
+          target.meta.textContent = `Direct asset: ${asset.name}`;
+          return;
+        }
+        target.button.href = repoLatestUrl;
+        target.meta.textContent = target.fallback;
+      }
+
+      async function loadReleaseLinks() {
+        try {
+          const response = await fetch(apiUrl, {
+            headers: { Accept: 'application/vnd.github+json' },
+          });
+          if (!response.ok) throw new Error(`GitHub release lookup failed: ${response.status}`);
+          const release = await response.json();
+          const assets = Array.isArray(release.assets) ? release.assets : [];
+
+          if (latestBtn && release.html_url) {
+            latestBtn.href = release.html_url;
+          }
+
+          setPlatformLink(linkTargets.windows, pickAsset(assets, linkTargets.windows.patterns));
+          setPlatformLink(linkTargets.mac, pickAsset(assets, linkTargets.mac.patterns));
+          setPlatformLink(linkTargets.linux, pickAsset(assets, linkTargets.linux.patterns));
+
+          if (statusEl) {
+            const releaseName = release.name || release.tag_name || 'latest release';
+            const published = release.published_at ? new Date(release.published_at).toLocaleString() : 'an unknown date';
+            statusEl.textContent = `Showing direct download links from ${releaseName}, published ${published}.`;
+          }
+        } catch (error) {
+          setPlatformLink(linkTargets.windows, null);
+          setPlatformLink(linkTargets.mac, null);
+          setPlatformLink(linkTargets.linux, null);
+          if (statusEl) {
+            statusEl.textContent = 'Could not fetch release metadata right now, so the buttons fall back to the latest GitHub release page.';
+          }
+          console.error(error);
+        }
+      }
+
+      void loadReleaseLinks();
+    })();
+  </script>
+</body>
+</html>

@@ -26,6 +26,10 @@
             "destination": "/desktop.html"
         },
         {
+            "source": "/downloads",
+            "destination": "/downloads.html"
+        },
+        {
             "source": "/analytics",
             "destination": "/analytics.html"
         },

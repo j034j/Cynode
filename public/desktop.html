@@ -38,16 +38,17 @@
         Cynode Desktop mirrors the same account-backed experience as the web app, and now includes a persistent in-app viewer that can load node URLs inside a reusable desktop browsing window instead of spawning endless browser tabs.
       </p>
       <div class="desktop-actions">
-        <button id="desktopInstallHelpBtn" class="desktop-btn" type="button">Install / Build Desktop App</button>
+        <a class="desktop-btn" href="/downloads">Download Cynode Desktop</a>
+        <button id="desktopInstallHelpBtn" class="desktop-btn secondary" type="button">Build Desktop App</button>
         <button id="launchDesktopBtn" class="desktop-btn" type="button">Launch Installed Desktop App</button>
         <a class="desktop-btn secondary" href="/extensions/chrome/install.html">Browser Bridge</a>
       </div>
       <div id="desktopLaunchStatus" class="desktop-status">
         <strong>Install is required before launch.</strong> The browser can only open <code>cynode://</code> after Cynode Desktop has been installed or at least started once on this device.
         <ol class="desktop-install-steps">
-          <li>Download and install Cynode Desktop.</li>
+          <li>Download and install Cynode Desktop with the Windows installer.</li>
           <li>Open Cynode Desktop once so Windows registers the <code>cynode://</code> handler.</li>
-          <li>Come back here and use <strong>Launch Installed Desktop App</strong>.</li>
+          <li>Sign in once inside the desktop app, then launch it anytime from its desktop shortcut.</li>
         </ol>
       </div>
       <div class="desktop-grid">
@@ -56,6 +57,7 @@
           <ul>
             <li>Your Cynode account, saved graphs, shares, media, and analytics sync through the same backend.</li>
             <li>Desktop and web stay aligned when you sign into the same Cynode account.</li>
+            <li>Your desktop session stays signed in across launches, so the installed app can be opened directly from its icon.</li>
             <li>Browser cookies are not imported automatically from Chrome, Edge, or Firefox.</li>
           </ul>
         </div>
@@ -75,7 +77,7 @@
       if (pre) pre.textContent = sampleUrl;
       document.getElementById('desktopInstallHelpBtn')?.addEventListener('click', () => {
         if (!status) return;
-        status.innerHTML = `<strong>Current install path:</strong> run <code>npm install</code>, then <code>npm run desktop:dev</code> for local use, or build an installer with <code>npm run desktop:dist</code>. After the desktop app opens once, Windows can register the <code>cynode://</code> handler for future launches.`;
+        status.innerHTML = `<strong>Installer build path:</strong> maintainers can run <code>npm install</code> and then <code>npm run desktop:dist:win</code>, <code>npm run desktop:dist:mac</code>, or <code>npm run desktop:dist:linux</code>. End users should just run the packaged installer, open Cynode Desktop once, and then use the created desktop shortcut for future launches.`;
       });
       document.getElementById('launchDesktopBtn')?.addEventListener('click', async () => {
         if (status) {

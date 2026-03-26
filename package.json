@@ -1,18 +1,29 @@
 {
   "name": "cynode",
+  "version": "1.0.0",
+  "description": "Cynode - Desktop/Web Presentation Platform",
+  "author": "Cynode Team",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/j034j/Cynode.git"
+  },
   "type": "module",
   "main": "desktop/main.cjs",
   "scripts": {
-    "postinstall": "node scripts/postinstall-prisma-win.mjs && node scripts/sync-chartjs.mjs",
+    "postinstall": "node scripts/postinstall-prisma-win.mjs && node scripts/sync-chartjs.mjs && node scripts/sync-desktop-assets.mjs",
     "dev": "tsx watch server/src/index.ts",
     "start": "node server/dist/index.js",
     "start:prod": "node --enable-source-maps server/dist/index.js",
     "build": "node scripts/sync-chartjs.mjs && prisma generate --schema server/prisma/schema.prisma && tsc -p server/tsconfig.json",
     "build:turso": "node scripts/sync-chartjs.mjs && prisma generate --schema server/prisma/schema.turso.prisma && tsc -p server/tsconfig.json",
-    "desktop:dev": "electron desktop/main.cjs",
-    "desktop:pack": "electron-builder --dir",
-    "desktop:dist": "electron-builder --win nsis portable",
+    "desktop:prepare-assets": "node scripts/sync-desktop-assets.mjs",
+    "desktop:dev": "node scripts/sync-desktop-assets.mjs && electron desktop/main.cjs",
+    "desktop:pack": "node scripts/sync-desktop-assets.mjs && electron-builder --dir",
+    "desktop:dist": "node scripts/sync-desktop-assets.mjs && electron-builder --win nsis portable",
+    "desktop:dist:win": "node scripts/sync-desktop-assets.mjs && electron-builder --win nsis portable",
+    "desktop:dist:mac": "node scripts/sync-desktop-assets.mjs && electron-builder --mac dmg zip",
+    "desktop:dist:linux": "node scripts/sync-desktop-assets.mjs && electron-builder --linux AppImage deb tar.gz",
     "sync:nodex": "node scripts/sync-nodex.mjs",
     "db:generate": "prisma generate --schema server/prisma/schema.prisma",
     "db:generate:turso": "prisma generate --schema server/prisma/schema.turso.prisma",
@@ -63,6 +74,7 @@
     "appId": "com.cynode.desktop",
     "productName": "Cynode Desktop",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "asar": true,
     "files": [
       "desktop/**/*",
       "package.json"
@@ -76,21 +88,82 @@
       }
     ],
     "directories": {
-      "output": "dist-desktop"
+      "output": "dist-desktop",
+      "buildResources": "build"
     },
     "win": {
+      "icon": "icon.ico",
       "target": [
-        "nsis",
-        "portable"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "icon": "icon.icns",
+      "category": "public.app-category.productivity",
+      "darkModeSupport": true,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "icon.png",
+      "category": "Office",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ]
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
+      "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "installerIcon": "public/icon-512.png",
-      "uninstallerIcon": "public/icon-512.png"
+      "shortcutName": "Cynode Desktop",
+      "installerIcon": "icon.ico",
+      "installerHeaderIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico"
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable.${ext}"

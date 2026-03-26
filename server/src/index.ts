@@ -152,6 +152,7 @@ app.get<{ Params: { code: string } }>("/:code(^[0-9A-Za-z]{4,32}$)", async (req,
 // SPA entry.
 app.get("/pricing", async (_req, reply) => reply.sendFile("pricing.html"));
 app.get("/desktop", async (_req, reply) => reply.sendFile("desktop.html"));
+app.get("/downloads", async (_req, reply) => reply.sendFile("downloads.html"));
 app.get("/analytics", async (_req, reply) => reply.sendFile("analytics.html"));
 app.get("/", async (_req, reply) => reply.sendFile("index.html"));
 

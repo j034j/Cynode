@@ -2,8 +2,9 @@ const path = require('node:path');
 const { app, BrowserWindow, ipcMain, shell, dialog, protocol, session } = require('electron');
 
 const PROTOCOL = 'cynode';
-const DEFAULT_DEV_URL = 'http://127.0.0.1:3000/';
-const DEFAULT_REMOTE_URL = process.env.CYNODE_DESKTOP_START_URL || DEFAULT_DEV_URL;
+const APP_ID = 'com.cynode.desktop';
+const DEFAULT_DEV_URL = 'http://127.0.0.1:3001/';
+const DEFAULT_REMOTE_URL = 'https://cynode.vercel.app/';
 const WINDOW_PARTITION = 'persist:cynode-desktop';
 
 // Register cynode as a privileged scheme to ensure it works correctly in the browser context
@@ -27,7 +28,20 @@ function isSafeAppUrl(value) {
 }
 
 function resolveStartUrl() {
-  return isSafeAppUrl(DEFAULT_REMOTE_URL) ? DEFAULT_REMOTE_URL : DEFAULT_DEV_URL;
+  const configuredUrl = process.env.CYNODE_DESKTOP_START_URL;
+  if (isSafeAppUrl(configuredUrl)) {
+    return configuredUrl;
+  }
+
+  if (app.isPackaged) {
+    return DEFAULT_REMOTE_URL;
+  }
+
+  return DEFAULT_DEV_URL;
+}
+
+function resolveWindowIconPath() {
+  return path.join(__dirname, 'assets', 'icon.png');
 }
 
 function registerProtocolClient() {
@@ -56,10 +70,13 @@ async function loadIntoWindow(win, targetUrl) {
   try {
     await win.loadURL(targetUrl);
   } catch (error) {
+    const helpText = app.isPackaged
+      ? 'Check your internet connection, then reopen Cynode Desktop. If you use a self-hosted Cynode deployment, set CYNODE_DESKTOP_START_URL before launching the app.'
+      : 'Start the Cynode server locally or set CYNODE_DESKTOP_START_URL to your deployed web app URL before launching the desktop app.';
     const message = [
       '<h2>Cynode Desktop Could Not Connect</h2>',
       `<p>Unable to load <code>${targetUrl}</code>.</p>`,
-      '<p>Start the Cynode server locally or set <code>CYNODE_DESKTOP_START_URL</code> to your deployed web app URL before launching the desktop app.</p>',
+      `<p>${helpText}</p>`,
       `<pre>${String(error && error.message ? error.message : error)}</pre>`,
     ].join('');
     await win.loadURL(`data:text/html,${encodeURIComponent(message)}`);
@@ -77,6 +94,7 @@ function createMainWindow() {
     autoHideMenuBar: true,
     backgroundColor: '#0f1722',
     title: 'Cynode Desktop',
+    icon: resolveWindowIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       partition: WINDOW_PARTITION,
@@ -107,6 +125,7 @@ function createViewerWindow() {
     autoHideMenuBar: true,
     backgroundColor: '#0b1220',
     title: 'Cynode Viewer',
+    icon: resolveWindowIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'viewer-preload.cjs'),
       partition: WINDOW_PARTITION,
@@ -171,6 +190,7 @@ function createSecondaryWindow(targetUrl, options = {}) {
     autoHideMenuBar: true,
     backgroundColor: '#0f1722',
     title: options.title || 'Cynode Secondary Window',
+    icon: resolveWindowIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       partition: WINDOW_PARTITION,
@@ -267,6 +287,8 @@ app.on('open-url', (event, url) => {
 });
 
 app.whenReady().then(() => {
+  app.setAppUserModelId(APP_ID);
+  app.setName('Cynode Desktop');
   registerProtocolClient();
   createMainWindow();
   if (pendingProtocolUrl) {
@@ -283,6 +305,7 @@ app.whenReady().then(() => {
 ipcMain.handle('cynode-desktop:get-app-info', () => {
   return {
     isDesktop: true,
+    appId: APP_ID,
     protocol: PROTOCOL,
     startUrl: resolveStartUrl(),
     version: app.getVersion(),
