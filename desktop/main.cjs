@@ -1,4 +1,5 @@
 const path = require('node:path');
+const fs = require('node:fs');
 const { app, BrowserWindow, ipcMain, shell, dialog, protocol, session } = require('electron');
 
 const PROTOCOL = 'cynode';
@@ -6,6 +7,7 @@ const APP_ID = 'com.cynode.desktop';
 const DEFAULT_DEV_URL = 'http://127.0.0.1:3001/';
 const DEFAULT_REMOTE_URL = 'https://cynode.vercel.app/';
 const WINDOW_PARTITION = 'persist:cynode-desktop';
+const DESKTOP_WEB_CACHE_VERSION = 'desktop-web-cache-v1';
 
 // Register cynode as a privileged scheme to ensure it works correctly in the browser context
 protocol.registerSchemesAsPrivileged([
@@ -16,6 +18,31 @@ let mainWindow = null;
 let viewerWindow = null;
 const secondaryWindows = new Set();
 let pendingProtocolUrl = null;
+
+async function maybeResetDesktopWebCache() {
+  const markerPath = path.join(app.getPath('userData'), 'desktop-web-cache-version.txt');
+  let currentVersion = '';
+
+  try {
+    currentVersion = fs.readFileSync(markerPath, 'utf8').trim();
+  } catch (_) {}
+
+  if (currentVersion === DESKTOP_WEB_CACHE_VERSION) {
+    return;
+  }
+
+  try {
+    const sess = session.fromPartition(WINDOW_PARTITION);
+    await sess.clearCache();
+    await sess.clearStorageData({
+      storages: ['serviceworkers', 'cachestorage'],
+    });
+    fs.writeFileSync(markerPath, `${DESKTOP_WEB_CACHE_VERSION}\n`, 'utf8');
+    console.log(`Desktop web cache reset for ${DESKTOP_WEB_CACHE_VERSION}.`);
+  } catch (error) {
+    console.error('Failed to reset desktop web cache:', error);
+  }
+}
 
 function isSafeAppUrl(value) {
   if (!value) return false;
@@ -286,10 +313,11 @@ app.on('open-url', (event, url) => {
   handleProtocolUrl(url);
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   app.setAppUserModelId(APP_ID);
   app.setName('Cynode Desktop');
   registerProtocolClient();
+  await maybeResetDesktopWebCache();
   createMainWindow();
   if (pendingProtocolUrl) {
     handleProtocolUrl(pendingProtocolUrl);
