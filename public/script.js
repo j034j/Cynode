@@ -1855,15 +1855,41 @@ async function updateVoiceSettingsForSelectedNode(nodeId) {
     await updateVoiceStatus(nodeId);
 }
 
+function getShareContextFromLocation(loc = window.location) {
+    const url = new URL(loc.href);
+    const queryCode = String(url.searchParams.get('share') || '').trim();
+    const queryNamespace = String(url.searchParams.get('ns') || '').trim();
+    if (queryCode) {
+        return {
+            code: queryCode,
+            namespace: queryNamespace || null,
+            source: 'query',
+        };
+    }
+
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (parts.length === 2) {
+        const [namespace, code] = parts;
+        if (/^[0-9A-Za-z][0-9A-Za-z-_]*$/.test(namespace) && /^[0-9A-Za-z]{4,32}$/.test(code)) {
+            return {
+                code,
+                namespace,
+                source: 'branded-path',
+            };
+        }
+    }
+
+    return null;
+}
+
 async function ensureGraphId() {
     // 1. Try URL share code first (Viewing mode)
-    const urlParams = new URLSearchParams(window.location.search);
-    const shareCode = urlParams.get('share');
-    if (shareCode) {
+    const shareContext = getShareContextFromLocation();
+    if (shareContext && shareContext.code) {
         try {
-            const graph = await apiJson(`/api/v1/shares/${shareCode}`, { method: 'GET' });
+            const graph = await apiJson(`/api/v1/shares/${shareContext.code}`, { method: 'GET' });
             if (graph && graph.id) {
-                activeShareCode = shareCode;
+                activeShareCode = shareContext.code;
                 console.log("[ensureGraphId] Using share code graph:", graph.id);
                 return graph.id;
             }
@@ -1907,9 +1933,11 @@ async function ensureGraphId() {
 }
 
 async function tryLoadShareFromUrl() {
+    const shareContext = getShareContextFromLocation();
+    if (!shareContext || !shareContext.code) return false;
+
     const url = new URL(window.location.href);
-    const code = url.searchParams.get('share');
-    if (!code) return false;
+    const code = shareContext.code;
 
     try {
         currentShareAnalyticsContext = {
@@ -1922,10 +1950,14 @@ async function tryLoadShareFromUrl() {
         };
         await loadSavedOrSharedGraphIntoEditor(code, { origin: 'share', enableShareAnalytics: true, editableAsShared: true });
 
-        // Clean up URL so refresh doesn't repeatedly import.
-        url.searchParams.delete('share');
-        const nextUrl = url.pathname + (url.search ? url.search : '') + url.hash;
-        window.history.replaceState({}, document.title, nextUrl);
+        // Clean up query-style share URLs so refresh doesn't repeatedly import,
+        // but keep branded share paths intact.
+        if (shareContext.source === 'query') {
+            url.searchParams.delete('share');
+            url.searchParams.delete('ns');
+            const nextUrl = url.pathname + (url.search ? url.search : '') + url.hash;
+            window.history.replaceState({}, document.title, nextUrl);
+        }
 
         return true;
     } catch (e) {

@@ -21,6 +21,10 @@
             "dest": "/api/server-bridge"
         },
         {
+            "src": "/([^/]+)/([0-9A-Za-z]{4,32})",
+            "dest": "/api/server-bridge"
+        },
+        {
             "src": "/pricing",
             "dest": "/pricing.html"
         },
