@@ -176,7 +176,7 @@ function setupDeviceMode() {
 function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     // Best-effort; failures should not impact core UI.
-    navigator.serviceWorker.register('/sw.js').catch(() => { });
+    navigator.serviceWorker.register('/sw.js?v=0326_assetfix').catch(() => { });
 }
 
 function setPreviewPaneExpanded(expanded, options = {}) {
@@ -308,6 +308,23 @@ function readLastActiveGraphForUser(user = currentUser) {
     } catch (_) {
         return null;
     }
+}
+
+function inferLastActiveGraphFromTopicOrigin(origin = graphTopicOrigin) {
+    const raw = String(origin || '').trim();
+    if (!raw) return null;
+
+    if (raw.startsWith('saved:')) {
+        const code = raw.slice(6).trim();
+        return code ? { code, origin: 'saved', updatedAt: null } : null;
+    }
+
+    if (raw.startsWith('share:')) {
+        const code = raw.slice(6).trim();
+        return code ? { code, origin: 'share', updatedAt: null } : null;
+    }
+
+    return null;
 }
 
 function writeLastActiveGraphForUser(code, { origin = 'saved', user = currentUser } = {}) {
@@ -3326,7 +3343,7 @@ function startActiveGraphPlayback() {
 
 async function restoreLastActiveGraphForSignedInUser() {
     if (!currentUser || !pendingLastActiveGraphRestore) return false;
-    if (activeShareCode || currentSavedShareCode) return false;
+    if (activeShareCode) return false;
 
     const restoreTarget = pendingLastActiveGraphRestore;
     pendingLastActiveGraphRestore = null;
@@ -3889,7 +3906,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const me = await apiJson('/api/v1/me', { method: 'GET' });
         const user = me && me.user ? me.user : null;
         currentUser = user;
-        pendingLastActiveGraphRestore = user ? readLastActiveGraphForUser(user) : null;
+        pendingLastActiveGraphRestore = user
+            ? (readLastActiveGraphForUser(user) || inferLastActiveGraphFromTopicOrigin())
+            : null;
         const orgs = me && Array.isArray(me.organizations) ? me.organizations : [];
         if (user) {
             if (authStatus) authStatus.textContent = `Signed in as ${user.handle}`;

@@ -1,7 +1,7 @@
 /* Cynode PWA service worker (minimal, safe caching). */
-const CACHE = "cynode-v6";
+const CACHE = "cynode-v7";
 
-// Core shell assets to pre-cache (pathname only — no query strings).
+// Core shell assets to pre-cache (pathname only; no query strings).
 // We store and retrieve by a canonical key (origin + pathname, no search).
 const ASSET_PATHS = [
   "/",
@@ -32,23 +32,44 @@ function canonicalReq(req) {
   return new Request(url.toString(), { credentials: req.credentials });
 }
 
+function isCacheableAssetResponse(req, res) {
+  if (!res || !res.ok) return false;
+
+  const url = new URL(req.url);
+  const contentType = String(res.headers.get("content-type") || "").toLowerCase();
+
+  if (url.pathname.endsWith(".js")) return contentType.includes("javascript");
+  if (url.pathname.endsWith(".css")) return contentType.includes("text/css");
+  if (url.pathname.endsWith(".webmanifest")) {
+    return contentType.includes("application/manifest+json") || contentType.includes("application/json");
+  }
+  if (url.pathname.endsWith(".png")) return contentType.includes("image/png");
+  if (url.pathname.endsWith(".ico")) {
+    return contentType.includes("image/x-icon") || contentType.includes("image/vnd.microsoft.icon");
+  }
+
+  return true;
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE)
-      .then((c) =>
-        // Pre-cache using canonical (no-query) URLs so versioned requests hit the cache.
+      .then((cache) =>
         Promise.all(
-          ASSET_PATHS.map((path) =>
-            fetch(new Request(self.location.origin + path))
+          ASSET_PATHS.map((path) => {
+            const req = new Request(self.location.origin + path);
+            return fetch(req)
               .then((res) => {
-                if (res.ok) {
-                  const key = new Request(self.location.origin + path);
-                  return c.put(key, res);
+                if (isCacheableAssetResponse(req, res)) {
+                  return cache.put(req, res);
                 }
+                return undefined;
               })
-              .catch(() => {/* non-fatal: asset may not exist yet */}),
-          ),
+              .catch(() => {
+                // Non-fatal: asset may not exist yet or network may be unavailable.
+              });
+          }),
         ),
       )
       .then(() => self.skipWaiting()),
@@ -59,7 +80,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+      await Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)));
       await self.clients.claim();
     })(),
   );
@@ -81,29 +102,24 @@ self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
 
-  // Cache-first for static assets.
-  // IMPORTANT: look up by canonical (no-query) key so ?v= versioning doesn't cause misses.
+  // Network-first for static assets so stale/broken cached JS/CSS/manifest files
+  // are repaired as soon as the browser is online again.
   if (isAssetRequest(req)) {
     event.respondWith(
       (async () => {
         const canonical = canonicalReq(req);
         const cache = await caches.open(CACHE);
 
-        // Try canonical key first, then the verbatim request as fallback.
-        const cached = (await cache.match(canonical)) || (await cache.match(req));
-        if (cached) return cached;
-
-        // Not cached — fetch, store under the canonical key, and return.
         try {
           const res = await fetch(req);
-          if (res.ok) {
-            // Store under canonical so future versioned requests match.
+          if (isCacheableAssetResponse(req, res)) {
             cache.put(canonical, res.clone());
           }
           return res;
         } catch (networkErr) {
-          // Offline & not cached — return a minimal error response instead of
-          // letting the promise reject (which triggers the scary SW console error).
+          const cached = (await cache.match(canonical)) || (await cache.match(req));
+          if (cached) return cached;
+
           console.warn("[SW] Asset fetch failed (offline?):", req.url, networkErr);
           return new Response("/* offline */", {
             status: 503,
