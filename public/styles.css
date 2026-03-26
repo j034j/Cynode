@@ -1437,9 +1437,9 @@ body.shared-readonly-mode textarea:disabled {
 }
 
 .browser-import-limit-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  align-items: start;
   gap: 16px;
   margin-bottom: 14px;
 }
@@ -1459,9 +1459,12 @@ body.shared-readonly-mode textarea:disabled {
   color: #233142;
 }
 
-.browser-import-limit-row input {
+#browserSourceModal .browser-import-limit-row input[type="number"] {
   width: 96px;
-  flex-shrink: 0;
+  max-width: 96px;
+  min-width: 96px;
+  justify-self: end;
+  align-self: start;
 }
 
 .browser-import-feedback {
