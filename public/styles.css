@@ -1733,6 +1733,21 @@ html[data-theme="dark"] .pane-inline-toggle {
   color: #dce8ff;
 }
 
+html[data-theme="dark"] button,
+html[data-theme="dark"] .theme-toggle,
+html[data-theme="dark"] .sidepanel-toggle,
+html[data-theme="dark"] .mode-toggle-btn,
+html[data-theme="dark"] .auth-tab,
+html[data-theme="dark"] .auth-primary,
+html[data-theme="dark"] .controls button,
+html[data-theme="dark"] .modal-buttons button,
+html[data-theme="dark"] .save-share-row button,
+html[data-theme="dark"] .pane-toggle-btn,
+html[data-theme="dark"] .pane-inline-toggle,
+html[data-theme="dark"] .icon-button {
+  color: #ff4d4f !important;
+}
+
 html[data-theme="dark"] .url-display h3,
 html[data-theme="dark"] .preview-container h3 {
   border-bottom-color: rgba(255, 255, 255, 0.12);
