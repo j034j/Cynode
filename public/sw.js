@@ -1,5 +1,5 @@
 /* Cynode PWA service worker (minimal, safe caching). */
-const CACHE = "cynode-v4";
+const CACHE = "cynode-v5";
 
 // Core shell assets to pre-cache (pathname only — no query strings).
 // We store and retrieve by a canonical key (origin + pathname, no search).
