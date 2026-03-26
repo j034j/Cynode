@@ -209,6 +209,19 @@ html[data-theme="dark"] #toEditingModeBtn.active {
   word-break: break-word;
 }
 
+body.shared-readonly-mode .auth-status {
+  color: #0b5fff;
+  font-weight: 700;
+}
+
+body.shared-readonly-mode button:disabled,
+body.shared-readonly-mode input:disabled,
+body.shared-readonly-mode select:disabled,
+body.shared-readonly-mode textarea:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
 .auth-buttons {
   display: flex;
   gap: 8px;

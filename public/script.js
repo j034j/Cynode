@@ -952,6 +952,46 @@ function requireSignedInForSharedRemix(actionLabel = 'remix this shared nodegrap
     return false;
 }
 
+function applySharedReadOnlyMode() {
+    const readOnly = !!loadedFromSharedGraph && !currentUser;
+    document.body.classList.toggle('shared-readonly-mode', readOnly);
+    if (!readOnly) return;
+
+    const authStatus = document.getElementById('authStatus');
+    if (authStatus) {
+        authStatus.textContent = 'Viewing a shared Nodegraph in read-only mode. Sign in to remix, save, share, or generate QR codes.';
+    }
+
+    const signInBtn = document.getElementById('signInBtn');
+    if (signInBtn) signInBtn.textContent = 'Sign In to Remix';
+
+    const readOnlyTitles = {
+        shareBtn: 'Sign in to share your own version of this Nodegraph.',
+        saveBtn: 'Sign in to save this shared Nodegraph to your account.',
+        updateSavedBtn: 'Sign in to update or remix this shared Nodegraph.',
+        addManualBtn: 'Sign in to add URLs to this shared Nodegraph.',
+        addFileBtn: 'Sign in to attach files to this shared Nodegraph.',
+        importBrowserBtn: 'Sign in to import browser content into this shared Nodegraph.',
+        clearAllBtn: 'Sign in to clear or remix this shared Nodegraph.',
+        generateQrBtn: 'Sign in to generate QR codes for your saved Nodegraphs.',
+        saveUrlBtn: 'Sign in to edit this shared Nodegraph.',
+        clearUrlBtn: 'Sign in to edit this shared Nodegraph.',
+        topicInput: 'Sign in to edit the topic for this shared Nodegraph.',
+        nodeCount: 'Sign in to change nodes in this shared Nodegraph.',
+        setNodeCountBtn: 'Sign in to change nodes in this shared Nodegraph.',
+        saveAsSelect: 'Sign in to save this shared Nodegraph to your account.',
+        qrSavedGraphSelect: 'Sign in to generate QR codes for your saved Nodegraphs.',
+    };
+
+    Object.entries(readOnlyTitles).forEach(([id, title]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.setAttribute('title', title);
+        if ('disabled' in el) el.disabled = true;
+        el.setAttribute('aria-disabled', 'true');
+    });
+}
+
 async function uploadSavedMedia(code, exportSnapshot) {
     if (!code) return;
     const nodeIndexMap = exportSnapshot && exportSnapshot.nodeIndexMap ? exportSnapshot.nodeIndexMap : {};
@@ -4047,6 +4087,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!loadedShare) {
         await loadSavedNodeData();
     }
+    applySharedReadOnlyMode();
 
     // Set initial value for node count input
     nodeCountInput.value = currentNodeCount;
@@ -4203,6 +4244,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     document.getElementById('importBrowserBtn')?.addEventListener('click', openBrowserSourcesModal);
     document.getElementById('shareBtn')?.addEventListener('click', async () => {
+        if (!requireSignedInForSharedRemix('share your own version of this shared nodegraph')) return;
         try {
             const exportSnapshot = buildNormalizedExportSnapshot();
             if (!exportSnapshot) {
@@ -4232,6 +4274,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
     document.getElementById('saveBtn')?.addEventListener('click', async () => {
+        if (!requireSignedInForSharedRemix('save this shared nodegraph to your account')) return;
         try {
             const exportSnapshot = buildNormalizedExportSnapshot();
             if (!exportSnapshot) {
@@ -4282,6 +4325,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
     updateSavedBtn?.addEventListener('click', async () => {
+        if (!requireSignedInForSharedRemix('update or remix this shared nodegraph')) return;
         if (!currentSavedShareCode) return;
         try {
             const exportSnapshot = buildNormalizedExportSnapshot();
@@ -4366,6 +4410,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Multi-node QR Code Generation Logic
     generateQrBtn?.addEventListener('click', () => {
+        if (!requireSignedInForSharedRemix('generate QR codes for this shared nodegraph')) return;
         if (!qrSavedGraphSelect || !qrDisplayArea) return;
         const targetUrl = qrSavedGraphSelect.value;
         if (!targetUrl) {
