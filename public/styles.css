@@ -1448,10 +1448,12 @@ body.shared-readonly-mode textarea:disabled {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
 .browser-import-limit-row label {
+  display: block;
   font-size: 13px;
   font-weight: 700;
   color: #233142;
