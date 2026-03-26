@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=0326_browserimport">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <title>Node Graph URL Manager</title>
 </head>
@@ -384,10 +384,22 @@
   <div id="browserSourceModal" class="modal" style="max-width:720px; width:min(92vw,720px); padding:28px 30px 24px; border-radius:18px;">
     <h2>Import from Browser</h2>
     <div class="modal-content">
-      <label for="itemLimit">Number of items to import (max 20):</label>
-      <input type="number" id="itemLimit" min="1" max="20" value="8">
-      <div class="browser-bridge-summary" style="display:flex; gap:12px; align-items:center; justify-content:space-between; padding:12px 14px; border-radius:14px; background:linear-gradient(135deg, rgba(11, 95, 255, 0.08), rgba(11, 95, 255, 0.03)); border:1px solid rgba(11, 95, 255, 0.12);">
-        <div id="browserBridgeStatus" class="settings-hint">Detecting browser bridge status...</div>
+      <p class="browser-import-intro settings-hint">Bring open tabs, recent bookmarks, or recent history into the current graph. Existing URLs in the imported nodes will be replaced.</p>
+      <div class="browser-import-limit-row">
+        <div class="browser-import-limit-copy">
+          <label for="itemLimit">Number of items to import</label>
+          <div id="browserImportHint" class="settings-hint">Cynode will fill the first matching nodes in this graph.</div>
+        </div>
+        <input type="number" id="itemLimit" min="1" max="20" value="8">
+      </div>
+      <div id="browserBridgeSummary" class="browser-bridge-summary browser-bridge-summary--idle">
+        <div class="browser-bridge-copy">
+          <span id="browserBridgeBadge" class="browser-bridge-badge">Checking</span>
+          <div class="browser-bridge-text">
+            <div id="browserBridgeStatus" class="settings-hint">Detecting browser bridge status...</div>
+            <div id="browserBridgeMeta" class="browser-bridge-meta">Open the Cynode bridge extension for your current browser if it is not detected automatically.</div>
+          </div>
+        </div>
         <button id="browserBridgeRefreshBtn" type="button" style="padding:10px 14px; border:none; border-radius:999px; font-size:13px; font-weight:600; white-space:nowrap;">Detect Extension</button>
       </div>
       <div id="browserInstallSlots" class="browser-install-slots" style="display:flex; flex-direction:column; gap:12px;">
@@ -413,6 +425,9 @@
           <span class="browser-install-action" style="display:inline-flex; align-items:center; justify-content:center; min-width:84px; padding:9px 14px; border-radius:999px; background:rgba(11, 95, 255, 0.1); color:#0b5fff; font-size:12px; font-weight:700; letter-spacing:0.02em; flex-shrink:0;">Install</span>
         </a>
       </div>
+      <div id="browserImportFeedback" class="browser-import-feedback browser-import-feedback--info" aria-live="polite">
+        Choose a source to replace the first matching nodes in this graph.
+      </div>
       <div class="modal-buttons" style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; margin-top:25px; padding-top:15px; border-top:1px solid #eee; width:100%; box-sizing:border-box;">
         <button id="importTabsBtn" style="width:100%; min-width:0; box-sizing:border-box; padding:11px 14px; border-radius:12px; font-weight:600;">Import Open Tabs</button>
         <button id="importBookmarksBtn" style="width:100%; min-width:0; box-sizing:border-box; padding:11px 14px; border-radius:12px; font-weight:600;">Import Recent Bookmarks</button>
@@ -425,7 +440,7 @@
   <div id="modalBackdrop"></div>
 
   <!-- Scripts -->
-  <script src="script.js?v=0323_2150"></script>
+  <script src="script.js?v=0326_browserimport"></script>
   <script src="play.js?v=0323_2150"></script>
   <script src="play-desktop.js?v=0323_2150"></script>
 </body>

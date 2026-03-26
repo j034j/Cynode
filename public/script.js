@@ -43,6 +43,7 @@ let nodeGraph, nodeSelector, urlInput, nodeCountInput, recentUrlDiv,
     nodeAssociationsDiv, urlFormModal, browserSourceModal, modalBackdrop,
     addressBar, itemLimitInput, nodeTitleInput, nodeCaptionInput,
     browserBridgeStatusEl, browserBridgeRefreshBtn, importTabsBtn, importBookmarksBtn, importHistoryBtn,
+    browserBridgeSummaryEl, browserBridgeBadgeEl, browserBridgeMetaEl, browserImportHintEl, browserImportFeedbackEl,
     splitContentEl, previewPaneToggleBtn, nodeAssociationsToggleBtn,
     qrSavedGraphSelect, generateQrBtn, qrDisplayArea;
 let authFormEl, signInBtnEl;
@@ -61,6 +62,11 @@ const BROWSER_IMPORT_ACTION_LABELS = {
     bookmarks: 'recent bookmarks',
     history: 'recent history',
 };
+const BROWSER_IMPORT_BUTTON_LABELS = {
+    tabs: 'Import Open Tabs',
+    bookmarks: 'Import Recent Bookmarks',
+    history: 'Import Recent History',
+};
 const BROWSER_INSTALL_GUIDES = {
     chrome: '/extensions/chrome/install.html',
     edge: '/extensions/edge/install.html',
@@ -73,6 +79,8 @@ let browserBridgeState = {
     capabilities: [],
     via: null,
     lastError: '',
+    detectInFlight: false,
+    importInFlight: null,
 };
 let previewPaneExpanded = false;
 
@@ -2774,24 +2782,69 @@ function isExtensionPageContext() {
     return /^(chrome|moz|ms-browser)-extension:/.test(String(window.location.protocol || ''));
 }
 
+function getBrowserImportActionButton(source) {
+    if (source === 'tabs') return importTabsBtn;
+    if (source === 'bookmarks') return importBookmarksBtn;
+    if (source === 'history') return importHistoryBtn;
+    return null;
+}
+
+function setBrowserImportFeedback(message, tone = 'info') {
+    if (!browserImportFeedbackEl) return;
+    browserImportFeedbackEl.textContent = message || 'Choose a source to replace the first matching nodes in this graph.';
+    browserImportFeedbackEl.className = `browser-import-feedback browser-import-feedback--${tone}`;
+}
+
+function describeBrowserBridgeError(rawMessage) {
+    const message = String(rawMessage || '').toLowerCase();
+    if (!message) return 'Install the Cynode browser extension, then click Detect Extension again.';
+    if (message.includes('bridge_timeout')) return 'The page could not reach the extension in time. Reload the page or the extension, then detect again.';
+    if (message.includes('runtime_unavailable')) return 'The browser runtime is unavailable in this tab. Open Cynode in a normal browser tab and try again.';
+    if (message.includes('receiving end does not exist') || message.includes('could not establish connection')) {
+        return 'The extension is not connected to this page yet. Reload the page after installing or enabling the extension.';
+    }
+    if (message.includes('unsupported_action')) return 'This extension build does not support that import source yet.';
+    return `Extension status: ${rawMessage}`;
+}
+
+function updateBrowserImportLimitHint() {
+    if (!browserImportHintEl) return;
+
+    const totalNodes = currentNodeCount > 0 ? currentNodeCount : MAX_NODES;
+    const rawLimit = parseInt(itemLimitInput?.value, 10);
+    const requestedLimit = Number.isFinite(rawLimit) ? rawLimit : Math.min(totalNodes, 8);
+    const appliedLimit = Math.max(1, Math.min(MAX_NODES, totalNodes, requestedLimit));
+
+    browserImportHintEl.textContent = `Current graph has ${totalNodes} node${totalNodes === 1 ? '' : 's'}. Cynode will replace up to ${appliedLimit} node${appliedLimit === 1 ? '' : 's'} during import.`;
+}
+
 function updateBrowserInstallCards() {
     const detected = browserBridgeState.browser || detectBrowserFamily();
     Object.keys(BROWSER_INSTALL_GUIDES).forEach((browserName) => {
         const elementId = `browserInstall${browserName.charAt(0).toUpperCase()}${browserName.slice(1)}`;
         const el = document.getElementById(elementId);
         if (!el) return;
-        el.classList.toggle('is-recommended', detected === browserName);
-        el.classList.toggle('is-detected', browserBridgeState.available && browserBridgeState.browser === browserName);
+        const isRecommended = detected === browserName;
+        const isDetected = browserBridgeState.available && browserBridgeState.browser === browserName;
+        el.classList.toggle('is-recommended', isRecommended);
+        el.classList.toggle('is-detected', isDetected);
+
+        const actionEl = el.querySelector('.browser-install-action');
+        if (!actionEl) return;
+        actionEl.textContent = isDetected ? 'Ready' : isRecommended ? 'Recommended' : 'Install';
     });
 }
 
 function setBrowserBridgeState(nextState) {
     browserBridgeState = {
-        available: !!nextState?.available,
-        browser: nextState?.browser || null,
-        capabilities: Array.isArray(nextState?.capabilities) ? nextState.capabilities : [],
-        via: nextState?.via || null,
-        lastError: nextState?.lastError || '',
+        ...browserBridgeState,
+        available: typeof nextState?.available === 'boolean' ? nextState.available : browserBridgeState.available,
+        browser: Object.prototype.hasOwnProperty.call(nextState || {}, 'browser') ? (nextState?.browser || null) : browserBridgeState.browser,
+        capabilities: Array.isArray(nextState?.capabilities) ? nextState.capabilities : browserBridgeState.capabilities,
+        via: Object.prototype.hasOwnProperty.call(nextState || {}, 'via') ? (nextState?.via || null) : browserBridgeState.via,
+        lastError: Object.prototype.hasOwnProperty.call(nextState || {}, 'lastError') ? (nextState?.lastError || '') : browserBridgeState.lastError,
+        detectInFlight: typeof nextState?.detectInFlight === 'boolean' ? nextState.detectInFlight : browserBridgeState.detectInFlight,
+        importInFlight: Object.prototype.hasOwnProperty.call(nextState || {}, 'importInFlight') ? (nextState?.importInFlight || null) : browserBridgeState.importInFlight,
     };
     updateBrowserImportUi();
 }
@@ -2804,21 +2857,67 @@ function updateBrowserImportUi() {
     const capabilities = browserBridgeState.capabilities.length > 0
         ? browserBridgeState.capabilities.join(', ')
         : 'tabs, bookmarks, history';
+    const busySource = browserBridgeState.importInFlight;
+    const isBusy = browserBridgeState.detectInFlight || !!busySource;
+    const detectedVia = browserBridgeState.via || (isExtensionPageContext() ? 'runtime' : 'content-script');
+    let summaryTone = 'browser-bridge-summary--warning';
+    let badgeText = 'Not Ready';
+    let statusText = '';
+    let metaText = '';
 
-    if (browserBridgeState.available) {
-        browserBridgeStatusEl.textContent = `Detected the ${activeBrowser} Cynode bridge. Imports available: ${capabilities}.`;
+    updateBrowserImportLimitHint();
+
+    if (browserBridgeState.detectInFlight) {
+        summaryTone = 'browser-bridge-summary--busy';
+        badgeText = 'Checking';
+        statusText = `Checking for the Cynode bridge in ${activeBrowser !== 'unknown' ? activeBrowser : 'this browser'}...`;
+        metaText = 'Keep this modal open while Cynode verifies the extension connection.';
+    } else if (busySource) {
+        summaryTone = 'browser-bridge-summary--busy';
+        badgeText = 'Importing';
+        statusText = `Importing ${BROWSER_IMPORT_ACTION_LABELS[busySource] || busySource} from the detected ${activeBrowser} bridge...`;
+        metaText = 'Cynode will update the first matching nodes as soon as the extension responds.';
+    } else if (browserBridgeState.available) {
+        summaryTone = 'browser-bridge-summary--ready';
+        badgeText = 'Ready';
+        statusText = `Detected the ${activeBrowser} Cynode bridge. Imports available: ${capabilities}.`;
+        metaText = `Connected via ${detectedVia}. Choose a source below to replace the first matching nodes in this graph.`;
     } else if (preferredBrowser !== 'unknown') {
-        browserBridgeStatusEl.textContent = `No Cynode bridge detected for ${preferredBrowser}. Install the recommended extension below, then click Detect Extension.`;
+        statusText = `No Cynode bridge detected for ${preferredBrowser}. Install the recommended extension below, then click Detect Extension.`;
+        metaText = describeBrowserBridgeError(browserBridgeState.lastError);
     } else {
-        browserBridgeStatusEl.textContent = 'No Cynode bridge detected. Install the extension for your browser below, then click Detect Extension.';
+        statusText = 'No Cynode bridge detected. Install the extension for your browser below, then click Detect Extension.';
+        metaText = describeBrowserBridgeError(browserBridgeState.lastError);
+    }
+
+    browserBridgeStatusEl.textContent = statusText;
+    if (browserBridgeMetaEl) browserBridgeMetaEl.textContent = metaText;
+    if (browserBridgeBadgeEl) browserBridgeBadgeEl.textContent = badgeText;
+    if (browserBridgeSummaryEl) {
+        browserBridgeSummaryEl.classList.remove('browser-bridge-summary--ready', 'browser-bridge-summary--warning', 'browser-bridge-summary--busy');
+        browserBridgeSummaryEl.classList.add(summaryTone);
     }
 
     updateBrowserInstallCards();
 
-    const canImport = browserBridgeState.available === true;
-    if (importTabsBtn) importTabsBtn.disabled = !canImport;
-    if (importBookmarksBtn) importBookmarksBtn.disabled = !canImport;
-    if (importHistoryBtn) importHistoryBtn.disabled = !canImport;
+    ['tabs', 'bookmarks', 'history'].forEach((source) => {
+        const button = getBrowserImportActionButton(source);
+        if (!button) return;
+        const isActive = busySource === source;
+        button.disabled = !browserBridgeState.available || isBusy;
+        button.textContent = isActive ? `Importing ${BROWSER_IMPORT_ACTION_LABELS[source]}...` : BROWSER_IMPORT_BUTTON_LABELS[source];
+        button.title = !browserBridgeState.available
+            ? 'Install or detect the browser extension before importing.'
+            : isBusy
+                ? 'Wait for the current browser action to finish.'
+                : `Import ${BROWSER_IMPORT_ACTION_LABELS[source]} into this graph.`;
+    });
+
+    if (browserBridgeRefreshBtn) {
+        browserBridgeRefreshBtn.disabled = isBusy;
+        browserBridgeRefreshBtn.textContent = browserBridgeState.detectInFlight ? 'Detecting...' : busySource ? 'Working...' : 'Detect Extension';
+        browserBridgeRefreshBtn.title = isBusy ? 'Wait for the current browser action to finish.' : 'Check whether the Cynode browser extension is available in this tab.';
+    }
 }
 
 function handleBrowserBridgeAvailabilityMessage(event) {
@@ -2936,8 +3035,19 @@ async function requestBrowserBridge(action, payload = {}) {
 }
 
 async function refreshBrowserBridgeStatus({ silent = false } = {}) {
+    setBrowserBridgeState({
+        detectInFlight: true,
+        lastError: '',
+    });
+    if (!silent) {
+        setBrowserImportFeedback('Checking for the Cynode bridge in this tab...', 'info');
+    }
+
     try {
         await requestBrowserBridge('ping', {});
+        if (!silent) {
+            setBrowserImportFeedback('Extension detected. Choose what you want to import into this graph.', 'success');
+        }
     } catch (error) {
         setBrowserBridgeState({
             available: false,
@@ -2946,9 +3056,9 @@ async function refreshBrowserBridgeStatus({ silent = false } = {}) {
             via: null,
             lastError: error && error.message ? String(error.message) : 'bridge_unavailable',
         });
-        if (!silent) {
-            alert('The browser extension was not detected. Install the matching extension for this browser, then click Detect Extension again.');
-        }
+        setBrowserImportFeedback(describeBrowserBridgeError(error && error.message ? String(error.message) : 'bridge_unavailable'), silent ? 'info' : 'warning');
+    } finally {
+        setBrowserBridgeState({ detectInFlight: false });
     }
 }
 
@@ -2998,22 +3108,29 @@ async function importFromBrowserSource(source) {
 
     const limit = getItemLimit();
     if (limit === 0) {
-        alert('Cannot import 0 items. Ensure node count is greater than 0.');
+        setBrowserImportFeedback('Cannot import 0 items. Increase the item count or add nodes to this graph first.', 'warning');
         return;
     }
 
     try {
+        setBrowserBridgeState({
+            importInFlight: source,
+            lastError: '',
+        });
+        setBrowserImportFeedback(`Fetching ${actionLabel} from the extension...`, 'info');
         const response = await requestBrowserBridge(source, { limit });
         const items = Array.isArray(response.items) ? response.items.slice(0, limit) : [];
         if (items.length < 1) {
-            alert(`No ${actionLabel} were returned by the extension.`);
+            setBrowserImportFeedback(`No ${actionLabel} were returned by the extension. Try a different source or lower the item count.`, 'warning');
             return;
         }
 
         if (!confirm(`This will replace existing URLs for the first ${items.length} nodes with ${actionLabel}. Continue?`)) {
+            setBrowserImportFeedback('Import canceled. Existing node URLs were kept unchanged.', 'info');
             return;
         }
 
+        setBrowserImportFeedback(`Imported ${items.length} ${actionLabel} into the graph.`, 'success');
         applyImportedItems(items, source);
     } catch (error) {
         console.error(`Error importing ${source}:`, error);
@@ -3024,7 +3141,9 @@ async function importFromBrowserSource(source) {
             via: null,
             lastError: error && error.message ? String(error.message) : 'bridge_unavailable',
         });
-        alert(`Unable to import ${actionLabel}. Install or refresh the Cynode browser extension for this browser, then try again.`);
+        setBrowserImportFeedback(`Unable to import ${actionLabel}. ${describeBrowserBridgeError(error && error.message ? String(error.message) : 'bridge_unavailable')}`, 'error');
+    } finally {
+        setBrowserBridgeState({ importInFlight: null });
     }
 }
 
@@ -3039,6 +3158,8 @@ function openBrowserSourcesModal() {
 
     // Reset item limit input to a reasonable default or the current node count
     itemLimitInput.value = Math.min(currentNodeCount > 0 ? currentNodeCount : 8, 8); // Default 8, max current count
+    updateBrowserImportLimitHint();
+    setBrowserImportFeedback('Choose a source to replace the first matching nodes in this graph.', 'info');
     showModal('browserSourceModal');
     updateBrowserImportUi();
     void refreshBrowserBridgeStatus({ silent: true });
@@ -3172,8 +3293,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     itemLimitInput = document.getElementById('itemLimit');
     nodeTitleInput = document.getElementById('nodeTitleInput');
     nodeCaptionInput = document.getElementById('nodeCaptionInput');
+    browserBridgeSummaryEl = document.getElementById('browserBridgeSummary');
+    browserBridgeBadgeEl = document.getElementById('browserBridgeBadge');
     browserBridgeStatusEl = document.getElementById('browserBridgeStatus');
+    browserBridgeMetaEl = document.getElementById('browserBridgeMeta');
     browserBridgeRefreshBtn = document.getElementById('browserBridgeRefreshBtn');
+    browserImportHintEl = document.getElementById('browserImportHint');
+    browserImportFeedbackEl = document.getElementById('browserImportFeedback');
     importTabsBtn = document.getElementById('importTabsBtn');
     importBookmarksBtn = document.getElementById('importBookmarksBtn');
     importHistoryBtn = document.getElementById('importHistoryBtn');
@@ -3988,6 +4114,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     importHistoryBtn?.addEventListener('click', loadFromHistory);
     browserBridgeRefreshBtn?.addEventListener('click', () => {
         void refreshBrowserBridgeStatus({ silent: false });
+    });
+    itemLimitInput?.addEventListener('input', updateBrowserImportLimitHint);
+    itemLimitInput?.addEventListener('change', () => {
+        getItemLimit();
+        updateBrowserImportLimitHint();
     });
     document.getElementById('cancelImportBtn')?.addEventListener('click', hideAllModals);
 
