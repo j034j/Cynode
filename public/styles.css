@@ -1746,6 +1746,21 @@ html[data-theme="dark"] .settings-row-wrap .settings-btn:disabled {
   color: rgba(255, 77, 79, 0.58) !important;
 }
 
+html[data-theme="dark"] #voiceRecBtn,
+html[data-theme="dark"] #voiceStopBtn,
+html[data-theme="dark"] #voicePlayBtn,
+html[data-theme="dark"] #bgAudioUseUrlBtn,
+html[data-theme="dark"] #bgAudioPreviewPlayBtn,
+html[data-theme="dark"] #bgAudioPreviewStopBtn,
+html[data-theme="dark"] #generateQrBtn {
+  color: #ff4d4f !important;
+}
+
+html[data-theme="dark"] #voiceStopBtn:disabled,
+html[data-theme="dark"] #bgAudioPreviewStopBtn:disabled {
+  color: rgba(255, 77, 79, 0.58) !important;
+}
+
 html[data-theme="dark"] .url-display h3,
 html[data-theme="dark"] .preview-container h3 {
   border-bottom-color: rgba(255, 255, 255, 0.12);
