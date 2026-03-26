@@ -1,5 +1,5 @@
 /* Cynode PWA service worker (minimal, safe caching). */
-const CACHE = "cynode-v5";
+const CACHE = "cynode-v6";
 
 // Core shell assets to pre-cache (pathname only — no query strings).
 // We store and retrieve by a canonical key (origin + pathname, no search).
@@ -13,6 +13,7 @@ const ASSET_PATHS = [
   "/analytics.html",
   "/pricing.html",
   "/styles.css",
+  "/qrcode-node.js",
   "/script.js",
   "/play.js",
   "/play-desktop.js",

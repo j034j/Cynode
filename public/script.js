@@ -237,8 +237,10 @@ let graphId = null;
 let pendingSaveTimer = null;
 const GRAPH_TOPIC_KEY = 'graphTopic';
 const GRAPH_TOPIC_ORIGIN_KEY = 'graphTopicOrigin'; // 'draft' | `share:${code}` | `saved:${code}`
+const LAST_ACTIVE_GRAPH_KEY_PREFIX = 'lastActiveGraph:v1:';
 let graphTopic = '';
 let graphTopicOrigin = null;
+let pendingLastActiveGraphRestore = null;
 
 // Playback media state
 
@@ -283,6 +285,55 @@ function displayTextForUrl(url) {
     const meta = parseLocalFileUrl(url);
     if (!meta) return 'Local file';
     return meta.name ? `Local file: ${meta.name}` : 'Local file';
+}
+
+function getLastActiveGraphStorageKey(user = currentUser) {
+    const scope = user && (user.id || user.handle) ? String(user.id || user.handle) : '';
+    return scope ? `${LAST_ACTIVE_GRAPH_KEY_PREFIX}${scope}` : null;
+}
+
+function readLastActiveGraphForUser(user = currentUser) {
+    const storageKey = getLastActiveGraphStorageKey(user);
+    if (!storageKey) return null;
+    try {
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || !parsed.code) return null;
+        return {
+            code: String(parsed.code),
+            origin: parsed.origin === 'share' ? 'share' : 'saved',
+            updatedAt: parsed.updatedAt ? String(parsed.updatedAt) : null,
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
+function writeLastActiveGraphForUser(code, { origin = 'saved', user = currentUser } = {}) {
+    const storageKey = getLastActiveGraphStorageKey(user);
+    const normalizedCode = String(code || '').trim();
+    if (!storageKey || !normalizedCode) return;
+    try {
+        localStorage.setItem(storageKey, JSON.stringify({
+            code: normalizedCode,
+            origin: origin === 'share' ? 'share' : 'saved',
+            updatedAt: new Date().toISOString(),
+        }));
+    } catch (_) { }
+}
+
+function clearLastActiveGraphForUser(user = currentUser) {
+    const storageKey = getLastActiveGraphStorageKey(user);
+    if (!storageKey) return;
+    try { localStorage.removeItem(storageKey); } catch (_) { }
+}
+
+function clearLastActiveGraphIfMatches(code, user = currentUser) {
+    const stored = readLastActiveGraphForUser(user);
+    if (stored && stored.code === String(code || '').trim()) {
+        clearLastActiveGraphForUser(user);
+    }
 }
 
 async function resolveUrlForViewer(url, nodeId) {
@@ -1825,6 +1876,7 @@ async function loadSavedOrSharedGraphIntoEditor(code, { origin = 'saved', enable
     activeShareCode = enableShareAnalytics ? code : null;
     loadedFromSharedGraph = !!editableAsShared;
     currentSavedShareCode = origin === 'saved' ? code : null;
+    writeLastActiveGraphForUser(code, { origin });
     updateUpdateSavedButton();
     if (enableShareAnalytics) void sendAnalyticsEvent('share_view');
 
@@ -3261,6 +3313,120 @@ function hasValidUrls() {
     return Object.values(nodeUrls).some(url => url && url.trim() !== '');
 }
 
+function startActiveGraphPlayback() {
+    const playBtn = document.getElementById('playPauseBtn');
+    if (!playBtn || !hasValidUrls()) return false;
+    if (typeof startPlaybackInModule === 'function') {
+        startPlaybackInModule();
+        return true;
+    }
+    playBtn.click();
+    return true;
+}
+
+async function restoreLastActiveGraphForSignedInUser() {
+    if (!currentUser || !pendingLastActiveGraphRestore) return false;
+    if (activeShareCode || currentSavedShareCode) return false;
+
+    const restoreTarget = pendingLastActiveGraphRestore;
+    pendingLastActiveGraphRestore = null;
+
+    try {
+        await loadSavedOrSharedGraphIntoEditor(restoreTarget.code, {
+            origin: restoreTarget.origin === 'share' ? 'share' : 'saved',
+            enableShareAnalytics: false,
+            editableAsShared: false,
+        });
+
+        if (hasValidUrls()) {
+            startActiveGraphPlayback();
+        }
+        return true;
+    } catch (error) {
+        console.warn('Unable to restore last active nodegraph for the signed-in user.', error);
+        clearLastActiveGraphIfMatches(restoreTarget.code);
+        return false;
+    }
+}
+
+function createSavedGraphUrl(code) {
+    return `${window.location.origin}/v/${encodeURIComponent(String(code || '').trim())}`;
+}
+
+function getSelectedQrDownloadSource(container) {
+    if (!container) return null;
+    const canvas = container.querySelector('canvas');
+    if (canvas && typeof canvas.toDataURL === 'function') {
+        try { return canvas.toDataURL('image/png'); } catch (_) { }
+    }
+    const img = container.querySelector('img');
+    if (img && img.src) return img.src;
+    return null;
+}
+
+function renderLocalQrCode(targetUrl) {
+    if (!qrDisplayArea) return;
+    qrDisplayArea.innerHTML = '';
+
+    if (typeof QRCode === 'undefined') {
+        qrDisplayArea.innerHTML = '<div class="auth-error">QR generator unavailable. Reload the page and try again.</div>';
+        return;
+    }
+
+    const qrMount = document.createElement('div');
+    qrMount.className = 'qr-image';
+    qrMount.style.display = 'flex';
+    qrMount.style.alignItems = 'center';
+    qrMount.style.justifyContent = 'center';
+    qrDisplayArea.appendChild(qrMount);
+
+    const qr = new QRCode(qrMount, {
+        text: targetUrl,
+        width: 220,
+        height: 220,
+        colorDark: '#0f172a',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M,
+    });
+
+    const hint = document.createElement('div');
+    hint.className = 'settings-hint';
+    hint.style.textAlign = 'center';
+    hint.textContent = 'Compact QR generated locally inside Cynode.';
+    qrDisplayArea.appendChild(hint);
+
+    const actionContainer = document.createElement('div');
+    actionContainer.style.display = 'flex';
+    actionContainer.style.gap = '10px';
+    actionContainer.style.alignItems = 'center';
+
+    const dl = document.createElement('a');
+    dl.className = 'qr-download-link';
+    dl.download = `cynode-multi-qr-${Date.now()}.png`;
+    dl.innerHTML = '<i class="fas fa-download"></i> Download QR Image';
+    actionContainer.appendChild(dl);
+
+    const open = document.createElement('a');
+    open.className = 'qr-download-link';
+    open.href = targetUrl;
+    open.target = '_blank';
+    open.rel = 'noopener noreferrer';
+    open.textContent = 'Open Nodegraph Link';
+    actionContainer.appendChild(open);
+
+    qrDisplayArea.appendChild(actionContainer);
+
+    window.setTimeout(() => {
+        const downloadSource = getSelectedQrDownloadSource(qrMount);
+        if (downloadSource) {
+            dl.href = downloadSource;
+        } else {
+            dl.removeAttribute('href');
+            dl.title = 'Unable to prepare QR image download.';
+        }
+    }, 0);
+}
+
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', async () => {
@@ -3400,7 +3566,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Add current active graph if shared
             if (currentSavedShareCode) {
                 const optCurrent = document.createElement('option');
-                optCurrent.value = `https://${window.location.host}/v/${currentSavedShareCode}`;
+                optCurrent.value = createSavedGraphUrl(currentSavedShareCode);
                 optCurrent.textContent = `★ Current: ${graphTopic || currentSavedShareCode}`;
                 qrSelect.appendChild(optCurrent);
             }
@@ -3413,7 +3579,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     
                     const opt = document.createElement('option');
                     // Ensure full URL for QR scanners
-                    opt.value = it.shareUrl || `https://${window.location.host}/v/${code}`;
+                    opt.value = it.shareUrl || createSavedGraphUrl(code);
                     const ns = it.namespace ? `[${it.namespace}] ` : '';
                     const label = it.topic ? `${it.topic} (${code})` : code;
                     opt.textContent = `${ns}${label}`;
@@ -3451,6 +3617,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     e.stopPropagation();
                     try {
                         await apiJson(`/api/v1/saved/${encodeURIComponent(it.code)}`, { method: 'DELETE' });
+                        clearLastActiveGraphIfMatches(it.code);
                         // If the currently displayed topic belongs to this saved/share code, clear it too.
                         if (graphTopicOrigin === `saved:${it.code}` || graphTopicOrigin === `share:${it.code}`) {
                             setGraphTopicFromExternal('', null);
@@ -3722,6 +3889,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const me = await apiJson('/api/v1/me', { method: 'GET' });
         const user = me && me.user ? me.user : null;
         currentUser = user;
+        pendingLastActiveGraphRestore = user ? readLastActiveGraphForUser(user) : null;
         const orgs = me && Array.isArray(me.organizations) ? me.organizations : [];
         if (user) {
             if (authStatus) authStatus.textContent = `Signed in as ${user.handle}`;
@@ -3760,6 +3928,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             await refreshSavedLinks();
         } else {
             currentUser = null;
+            pendingLastActiveGraphRestore = null;
             if (authStatus) authStatus.textContent = 'Not signed in';
             if (signInBtn) signInBtn.style.display = '';
             if (authForm) authForm.style.display = 'none';
@@ -3771,6 +3940,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     } catch (e) {
         currentUser = null;
+        pendingLastActiveGraphRestore = null;
         // Backend may not expose auth in some deployments; keep UI quiet.
         if (authStatus) authStatus.textContent = '';
         if (signInBtn) signInBtn.style.display = '';
@@ -3889,6 +4059,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (playBtn) {
             playBtn.disabled = true;
             playBtn.title = "Playback unavailable (script error)";
+        }
+    }
+
+    if (!loadedShare) {
+        const restoredLastGraph = await restoreLastActiveGraphForSignedInUser();
+        if (restoredLastGraph && currentUser) {
+            await refreshSavedLinks();
         }
     }
 
@@ -4049,6 +4226,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     graphTopicOrigin = `saved:${res.code}`;
                     try { localStorage.setItem(GRAPH_TOPIC_ORIGIN_KEY, graphTopicOrigin); } catch (_) { }
                     currentSavedShareCode = res.code;
+                    writeLastActiveGraphForUser(res.code, { origin: 'saved' });
                     updateUpdateSavedButton();
                 }
 
@@ -4090,6 +4268,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     topic: graphTopic || undefined,
                 }),
             });
+            writeLastActiveGraphForUser(currentSavedShareCode, { origin: 'saved' });
             try { await uploadSavedMedia(currentSavedShareCode, exportSnapshot); } catch (_) { }
             if (res && res.shareUrl) {
                 await refreshSavedLinks();
@@ -4160,50 +4339,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        // Show loading state
         qrDisplayArea.innerHTML = '<div class="settings-hint" style="text-align:center; padding: 10px;">Creating Multinode QR...</div>';
-        
-        // Use QRServer API for high-res generation
-        const qrSize = 400; 
-        const qrApi = `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&data=${encodeURIComponent(targetUrl)}&margin=10&format=png`;
-        
-        const img = new Image();
-        img.className = 'qr-image';
-        img.alt = 'Multinode QR Code';
-        img.style.width = '160px'; // Visual size in panel
-        img.onload = () => {
-            qrDisplayArea.innerHTML = '';
-            qrDisplayArea.appendChild(img);
-            
-            const actionContainer = document.createElement('div');
-            actionContainer.style.marginTop = '10px';
-            actionContainer.style.display = 'flex';
-            actionContainer.style.flexDirection = 'column';
-            actionContainer.style.alignItems = 'center';
-            actionContainer.style.gap = '6px';
-
-            const dl = document.createElement('a');
-            dl.className = 'qr-download-link';
-            dl.href = qrApi;
-            dl.download = `cynode-multi-qr-${Date.now()}.png`;
-            dl.target = '_blank';
-            dl.innerHTML = '<i class="fas fa-download"></i> Download QR Image';
-            actionContainer.appendChild(dl);
-
-            const hint = document.createElement('div');
-            hint.className = 'settings-hint';
-            hint.style.fontSize = '10px';
-            hint.style.textAlign = 'center';
-            hint.textContent = "Scanners will follow your multi-link path.";
-            actionContainer.appendChild(hint);
-
-            qrDisplayArea.appendChild(actionContainer);
-            console.log(`[QRGen] Generated QR for: ${targetUrl}`);
-        };
-        img.onerror = () => {
-            qrDisplayArea.innerHTML = '<div class="auth-error">Failed to generate QR code. Service may be down.</div>';
-        };
-        img.src = qrApi;
+        renderLocalQrCode(targetUrl);
+        console.log(`[QRGen] Generated local QR for: ${targetUrl}`);
     });
 
     console.log("Node Graph URL Manager Initialized.");

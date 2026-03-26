@@ -434,6 +434,14 @@ function togglePlay() {
     }
 }
 
+function isPlayingInModule() {
+    return !!isPlaying;
+}
+
+function startPlaybackInModule() {
+    if (!isPlaying) togglePlay();
+}
+
 function startPlaySequence() {
     if (playTimer) { clearTimeout(playTimer); playTimer = null; }
 
