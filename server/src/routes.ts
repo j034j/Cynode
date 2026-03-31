@@ -353,7 +353,7 @@ export async function registerRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const asset = await prisma.mediaAsset.findUnique({ where: { id: req.params.id } });
       if (!asset) return reply.code(404).send({ error: "not_found" });
 
@@ -392,7 +392,7 @@ export async function registerRoutes(app: FastifyInstance) {
       const user = (req as any).user ?? null;
       if (!user) return reply.code(401).send({ error: "unauthorized" });
 
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const sub = await prisma.userSubscription.findUnique({ where: { userId: user.id } });
       const planKey = isUnlimitedUser(user) ? "ultra" : sub?.planKey ?? "free";
       const status = isUnlimitedUser(user) ? "active" : sub?.status ?? "free";
@@ -434,7 +434,7 @@ export async function registerRoutes(app: FastifyInstance) {
       },
     },
     async (req) => {
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const share = await prisma.share.findUnique({ where: { code: req.body.shareCode } });
       if (!share) return { ok: true }; // ignore unknown codes
 
@@ -518,7 +518,7 @@ export async function registerRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const user = (req as any).user ?? null;
       if (!user) return reply.code(401).send({ error: "unauthorized" });
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const shares = await prisma.share.findMany({
         where: { createdByUserId: user.id, saved: true },
         select: { code: true },
@@ -592,7 +592,7 @@ export async function registerRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const user = (req as any).user ?? null;
       if (!user) return reply.code(401).send({ error: "unauthorized" });
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const membership = await prisma.membership.findUnique({
         where: { userId_organizationId: { userId: user.id, organizationId: req.params.orgId } },
       });
@@ -676,7 +676,7 @@ export async function registerRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const user = (req as any).user ?? null;
       if (!user) return reply.code(401).send({ error: "unauthorized" });
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const share = await prisma.share.findUnique({ where: { code: req.params.code } });
       if (!share) return reply.code(404).send({ error: "not_found" });
       if (share.organizationId) {
@@ -822,7 +822,7 @@ export async function registerRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const user = (req as any).user ?? null;
       if (!user) return reply.code(401).send({ error: "unauthorized" });
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
 
       let scopeInfo;
       try {
@@ -1094,7 +1094,7 @@ export async function registerRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const user = (req as any).user ?? null;
       if (!user) return reply.code(401).send({ error: "unauthorized" });
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
 
       const share = await prisma.share.findUnique({
         where: { code: req.params.code },
@@ -1233,7 +1233,7 @@ export async function registerRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const user = (req as any).user ?? null;
       if (!user) return reply.code(401).send({ error: "unauthorized" });
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
 
       let scopeInfo;
       try {
@@ -1311,7 +1311,7 @@ export async function registerRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const passwordHash = hashPassword(req.body.password);
 
       try {
@@ -1367,7 +1367,7 @@ export async function registerRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const ident = req.body.identifier.trim().toLowerCase();
       let user =
         ident.includes("@")
@@ -1443,7 +1443,7 @@ export async function registerRoutes(app: FastifyInstance) {
       const user = (req as any).user ?? null;
       if (!user) return { user: null, userPlan: null, organizations: [] };
 
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const userSub = await prisma.userSubscription.findUnique({ where: { userId: user.id } });
       const memberships = await prisma.membership.findMany({
         where: { userId: user.id },
@@ -1493,7 +1493,7 @@ export async function registerRoutes(app: FastifyInstance) {
     async (req, reply) => {
       requireUser(req as any);
       const user = (req as any).user;
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
 
       try {
         await prisma.user.update({
@@ -1532,7 +1532,7 @@ export async function registerRoutes(app: FastifyInstance) {
     async (req, reply) => {
       requireUser(req as any);
       const user = (req as any).user;
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
 
       // Get the current persistent user with passwordHash
       const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
@@ -1604,7 +1604,7 @@ export async function registerRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       requireUser(req as any);
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const created = await prisma.organization.create({
         data: {
           name: req.body.name,
@@ -1639,7 +1639,7 @@ export async function registerRoutes(app: FastifyInstance) {
     async (req) => {
       const user = (req as any).user ?? null;
       if (!user) return [];
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const memberships = await prisma.membership.findMany({
         where: { userId: user.id },
         include: { organization: true },
@@ -1765,7 +1765,7 @@ export async function registerRoutes(app: FastifyInstance) {
       let org: { id: string; slug: string; customDomain: string | null } | null = null;
       if (orgId) {
         requireUser(req as any);
-        const prisma = getPrisma();
+        const prisma = await getPrisma();
         const membership = await prisma.membership.findUnique({
           where: { userId_organizationId: { userId: user.id, organizationId: orgId } },
           include: { organization: true },
@@ -1844,7 +1844,7 @@ export async function registerRoutes(app: FastifyInstance) {
       };
 
       if (orgId) {
-        const prisma = getPrisma();
+        const prisma = await getPrisma();
         const membership = await prisma.membership.findUnique({
           where: { userId_organizationId: { userId: user.id, organizationId: orgId } },
           include: { organization: { include: { subscription: true } } },
@@ -1861,7 +1861,7 @@ export async function registerRoutes(app: FastifyInstance) {
           const plan = planByKey(membership.organization.subscription?.planKey ?? "free");
           if (plan.monthlyCredits !== null) {
             const periodStart = monthPeriodStart(new Date());
-            const prisma2 = getPrisma();
+            const prisma2 = await getPrisma();
             const counter = await prisma2.usageCounter.findUnique({
               where: { subjectType_subjectId_periodStart: { subjectType: "org", subjectId: orgId, periodStart } },
             });
@@ -1879,7 +1879,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
       // Personal quota enforcement for non-unlimited users.
       if (!orgId && !isUnlimitedUser(user)) {
-        const prisma = getPrisma();
+        const prisma = await getPrisma();
         const sub = await prisma.userSubscription.findUnique({ where: { userId: user.id } });
         const plan = planByKey(sub?.planKey ?? "free");
         if (plan.monthlyCredits !== null) {
@@ -1941,7 +1941,7 @@ export async function registerRoutes(app: FastifyInstance) {
       const user = (req as any).user ?? null;
       if (!user) return reply.code(401).send({ error: "unauthorized" });
 
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const items = await prisma.share.findMany({
         where: { createdByUserId: user.id, saved: true },
         include: { organization: true },
@@ -1984,7 +1984,7 @@ export async function registerRoutes(app: FastifyInstance) {
       const user = (req as any).user ?? null;
       if (!user) return reply.code(401).send({ error: "unauthorized" });
 
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const existing = await prisma.share.findUnique({ where: { code: req.params.code } });
       if (!existing || existing.createdByUserId !== user.id || existing.saved !== true) {
         return reply.code(404).send({ error: "not_found" });
@@ -2017,7 +2017,7 @@ export async function registerRoutes(app: FastifyInstance) {
     async (req, reply) => {
       requireUser(req as any);
       const user = (req as any).user;
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const authz = await assertCanEditSavedShare(prisma, user, req.params.code);
       if (authz.error === "not_found") return reply.code(404).send({ error: "not_found" });
       if (authz.error) return reply.code(403).send({ error: "forbidden" });
@@ -2080,7 +2080,7 @@ export async function registerRoutes(app: FastifyInstance) {
     async (req, reply) => {
       requireUser(req as any);
       const user = (req as any).user;
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
 
       const authz = await assertCanEditSavedShare(prisma, user, req.params.code);
       if (authz.error === "not_found") return reply.code(404).send({ error: "not_found" });
@@ -2101,7 +2101,7 @@ export async function registerRoutes(app: FastifyInstance) {
         const subjectType = authz.share.organizationId ? "org" : "user";
         const subjectId = authz.share.organizationId ?? authz.share.createdByUserId;
         if (subjectId && !isUnlimitedUser(user)) {
-          const prisma2 = getPrisma();
+          const prisma2 = await getPrisma();
           const planKey = authz.share.organizationId
             ? authz.share.organization?.subscription?.planKey ?? "free"
             : (await prisma2.userSubscription.findUnique({ where: { userId: user.id } }))?.planKey ?? "free";
@@ -2195,7 +2195,7 @@ export async function registerRoutes(app: FastifyInstance) {
     async (req, reply) => {
       requireUser(req as any);
       const user = (req as any).user;
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
 
       const nodeIndex = Number(req.params.nodeIndex);
       if (!Number.isFinite(nodeIndex) || nodeIndex < 1 || nodeIndex > 20) {
@@ -2221,7 +2221,7 @@ export async function registerRoutes(app: FastifyInstance) {
         const subjectType = authz.share.organizationId ? "org" : "user";
         const subjectId = authz.share.organizationId ?? authz.share.createdByUserId;
         if (subjectId && !isUnlimitedUser(user)) {
-          const prisma2 = getPrisma();
+          const prisma2 = await getPrisma();
           const planKey = authz.share.organizationId
             ? authz.share.organization?.subscription?.planKey ?? "free"
             : (await prisma2.userSubscription.findUnique({ where: { userId: user.id } }))?.planKey ?? "free";
@@ -2316,7 +2316,7 @@ export async function registerRoutes(app: FastifyInstance) {
     async (req, reply) => {
       requireUser(req as any);
       const user = (req as any).user;
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
 
       const nodeIndex = Number(req.params.nodeIndex);
       if (!Number.isFinite(nodeIndex) || nodeIndex < 1 || nodeIndex > 20) {
@@ -2339,7 +2339,7 @@ export async function registerRoutes(app: FastifyInstance) {
         const subjectType = authz.share.organizationId ? "org" : "user";
         const subjectId = authz.share.organizationId ?? authz.share.createdByUserId;
         if (subjectId && !isUnlimitedUser(user)) {
-          const prisma2 = getPrisma();
+          const prisma2 = await getPrisma();
           const planKey = authz.share.organizationId
             ? authz.share.organization?.subscription?.planKey ?? "free"
             : (await prisma2.userSubscription.findUnique({ where: { userId: user.id } }))?.planKey ?? "free";
@@ -2425,7 +2425,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
       // Attach media descriptors if present.
       try {
-        const prisma = getPrisma();
+        const prisma = await getPrisma();
         const media = await prisma.mediaAsset.findMany({ where: { shareCode: req.params.code } });
         const background = media.find((m: any) => m.kind === "bg" && m.nodeIndex === 0) ?? null;
         const voiceByNode: Record<string, any> = {};

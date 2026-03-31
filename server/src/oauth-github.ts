@@ -50,7 +50,7 @@ async function getGithubUser(accessToken: string): Promise<GithubUser> {
 }
 
 async function allocateUniqueHandle(base: string): Promise<string> {
-  const prisma = getPrisma();
+  const prisma = await getPrisma();
   const root = slugifyHandle(base);
   for (let i = 0; i < 20; i++) {
     const candidate = i === 0 ? root : `${root}${i + 1}`;
@@ -91,7 +91,7 @@ export async function registerGithubOAuth(app: FastifyInstance) {
 
     const gh = await getGithubUser(accessToken);
 
-    const prisma = getPrisma();
+    const prisma = await getPrisma();
     const provider = "github";
     const providerUserId = String(gh.id);
 

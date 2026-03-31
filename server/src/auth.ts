@@ -61,7 +61,7 @@ export async function loadUserFromSession(req: FastifyRequest): Promise<AuthUser
   if (typeof sid !== "string" || sid.length < 16) return null;
 
   try {
-    const prisma = getPrisma();
+    const prisma = await getPrisma();
     const session = await prisma.session.findUnique({
       where: { id: sid },
       include: { user: true },
@@ -102,7 +102,7 @@ export async function createSessionAndSetCookie(
   const sid = crypto.randomBytes(24).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-  const prisma = getPrisma();
+  const prisma = await getPrisma();
   await prisma.session.create({
     data: { id: sid, userId, expiresAt },
   });
@@ -125,7 +125,7 @@ export async function clearSessionCookieAndDb(req: FastifyRequest, reply: Fastif
 
   const sid = req.cookies?.[SESSION_COOKIE];
   if (typeof sid === "string" && sid.length > 0) {
-    const prisma = getPrisma();
+    const prisma = await getPrisma();
     await prisma.session.deleteMany({ where: { id: sid } });
   }
 

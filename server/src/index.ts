@@ -147,7 +147,7 @@ app.get<{ Params: { code: string } }>("/:code(^[0-9A-Za-z]{4,32}$)", async (req,
   if (typeof hostHeader !== "string" || hostHeader.length === 0) return reply.callNotFound();
   const host = hostHeader.split(":")[0].toLowerCase();
 
-  const prisma = getPrisma();
+  const prisma = await getPrisma();
   const org = await prisma.organization.findUnique({ where: { customDomain: host } });
   if (!org) return reply.callNotFound();
 

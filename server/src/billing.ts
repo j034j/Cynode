@@ -37,7 +37,7 @@ function getBaseUrl(req: Parameters<typeof getPublicOrigin>[0]): string {
 }
 
 async function requireOrgOwner(userId: string, organizationId: string) {
-  const prisma = getPrisma();
+  const prisma = await getPrisma();
   const m = await prisma.membership.findUnique({
     where: { userId_organizationId: { userId, organizationId } },
   });
@@ -111,7 +111,7 @@ export async function registerBillingRoutes(app: FastifyInstance) {
       if (!user) return reply.code(401).send({ error: "unauthorized" });
       await requireOrgOwner(user.id, req.params.orgId);
 
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const org = await prisma.organization.findUnique({ where: { id: req.params.orgId } });
       if (!org) return reply.code(404).send({ error: "not_found" });
 
@@ -160,7 +160,7 @@ export async function registerBillingRoutes(app: FastifyInstance) {
       if (!user) return reply.code(401).send({ error: "unauthorized" });
       await requireOrgOwner(user.id, req.params.orgId);
 
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const org = await prisma.organization.findUnique({ where: { id: req.params.orgId } });
       if (!org) return reply.code(404).send({ error: "not_found" });
 
@@ -233,7 +233,7 @@ export async function registerBillingRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const user = req.user;
       if (!user) return reply.code(401).send({ error: "unauthorized" });
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const sub = await prisma.userSubscription.findUnique({ where: { userId: user.id } });
       if (!sub) {
         return { planKey: "free", status: "free", currentPeriodEnd: null, cancelAtPeriodEnd: false };
@@ -272,7 +272,7 @@ export async function registerBillingRoutes(app: FastifyInstance) {
       const plan = plans().find((p) => p.key === req.body.planKey) ?? null;
       if (!plan) return reply.code(400).send({ error: "invalid_plan" });
 
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       if (plan.key === "free") {
         await prisma.userSubscription.upsert({
           where: { userId: user.id },
@@ -338,7 +338,7 @@ export async function registerBillingRoutes(app: FastifyInstance) {
       if (!user) return reply.code(401).send({ error: "unauthorized" });
       if (!stripeEnabled()) return reply.code(501).send({ error: "stripe_not_configured" });
 
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const sub = await prisma.userSubscription.findUnique({ where: { userId: user.id } });
       if (!sub || !sub.providerCustomerId) return reply.code(404).send({ error: "not_found" });
 
@@ -372,7 +372,7 @@ export async function registerBillingRoutes(app: FastifyInstance) {
       await requireOrgOwner(user.id, req.params.orgId);
 
       if (!stripeEnabled()) return reply.code(501).send({ error: "stripe_not_configured" });
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
       const sub = await prisma.subscription.findUnique({ where: { organizationId: req.params.orgId } });
       if (!sub || !sub.providerCustomerId) return reply.code(404).send({ error: "not_found" });
 
@@ -417,7 +417,7 @@ export async function registerBillingRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "bad_signature" });
       }
 
-      const prisma = getPrisma();
+      const prisma = await getPrisma();
 
       const upsertFromStripeSubscription = async (orgId: string, sub: Stripe.Subscription) => {
         const priceId = sub.items.data[0]?.price?.id ?? null;

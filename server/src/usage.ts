@@ -59,7 +59,7 @@ export function nextMonthPeriodStart(d = new Date()): Date {
 }
 
 export async function getOrCreateUsageCounter(subjectType: "user" | "org", subjectId: string, now = new Date()) {
-  const prisma = getPrisma();
+  const prisma = await getPrisma();
   const periodStart = monthPeriodStart(now);
   return await prisma.usageCounter.upsert({
     where: { subjectType_subjectId_periodStart: { subjectType, subjectId, periodStart } },
@@ -74,7 +74,7 @@ export async function addUsage(subjectType: "user" | "org", subjectId: string, d
   mediaBytesUploaded: number;
   analyticsEvents: number;
 }>) {
-  const prisma = getPrisma();
+  const prisma = await getPrisma();
   const periodStart = monthPeriodStart(new Date());
   await prisma.usageCounter.upsert({
     where: { subjectType_subjectId_periodStart: { subjectType, subjectId, periodStart } },

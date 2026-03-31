@@ -43,7 +43,7 @@ export async function createGraph(
   const nodePauseSecByNode = input?.nodePauseSecByNode ?? {};
 
   if (isDbEnabled()) {
-    const prisma = getPrisma();
+    const prisma = await getPrisma();
     const created = await prisma.graph.create({
       data: {
         nodeCount,
@@ -91,7 +91,7 @@ export async function createGraph(
 
 export async function getGraph(id: string): Promise<GraphState | null> {
   if (isDbEnabled()) {
-    const prisma = getPrisma();
+    const prisma = await getPrisma();
     const graph = await prisma.graph.findUnique({
       where: { id },
       include: { nodes: true },
@@ -134,7 +134,7 @@ export async function putGraph(
   input: Pick<GraphState, "nodeCount" | "lastSelectedNode" | "nodeUrls"> & Partial<Pick<GraphState, "nodeCaptions" | "nodePauseSecByNode">>,
 ): Promise<GraphState | null> {
   if (isDbEnabled()) {
-    const prisma = getPrisma();
+    const prisma = await getPrisma();
     const nodeCount = clampInt(input.nodeCount, 1, 20);
     const nodeUrls = normalizeNodeUrls(input.nodeUrls, nodeCount);
     const lastSelectedNode =
@@ -280,7 +280,7 @@ export async function createShareFromGraphState(
   const topic = meta?.topic ? String(meta.topic).trim() : null;
 
   if (isDbEnabled()) {
-    const prisma = getPrisma();
+    const prisma = await getPrisma();
 
     // Best-effort uniqueness with bounded retries.
     for (let attempt = 0; attempt < 10; attempt++) {
@@ -327,7 +327,7 @@ export async function getGraphByShareCode(
   code: string,
 ): Promise<(GraphState & { shareCreatedAt: string; topic: string | null }) | null> {
   if (isDbEnabled()) {
-    const prisma = getPrisma();
+    const prisma = await getPrisma();
     const share = await prisma.share.findUnique({ where: { code } });
     if (!share) return null;
     const graph = await getGraph(share.graphId);

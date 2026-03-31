@@ -24,7 +24,7 @@ function getRemotePrisma(): PrismaClient | null {
 
 export async function pushUserWorkToCloud(userId: string) {
   const remote = getRemotePrisma();
-  const local = getPrisma();
+  const local = await getPrisma();
   if (!remote || !local) return;
 
   try {
@@ -92,7 +92,7 @@ export async function pushUserWorkToCloud(userId: string) {
 
 export async function pullUserWorkFromCloud(userId: string) {
   const remote = getRemotePrisma();
-  const local = getPrisma();
+  const local = await getPrisma();
   if (!remote || !local) return;
 
   try {
@@ -160,7 +160,7 @@ export async function pullUserWorkFromCloud(userId: string) {
 
 export async function findAndPullRemoteUser(identifier: string): Promise<boolean> {
   const remote = getRemotePrisma();
-  const local = getPrisma();
+  const local = await getPrisma();
   if (!remote || !local) return false;
 
   try {
