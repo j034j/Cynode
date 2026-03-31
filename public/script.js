@@ -165,9 +165,15 @@ function isLikelyMobileDevice() {
 }
 
 function setupDeviceMode() {
+    let lastDevice = '';
     const apply = () => {
         const html = document.documentElement;
-        html.dataset.device = isLikelyMobileDevice() ? 'mobile' : 'desktop';
+        const nextDevice = isLikelyMobileDevice() ? 'mobile' : 'desktop';
+        html.dataset.device = nextDevice;
+        if (nextDevice !== lastDevice) {
+            window.dispatchEvent(new CustomEvent('cynode:devicemodechange', { detail: { device: nextDevice } }));
+            lastDevice = nextDevice;
+        }
     };
     apply();
     window.addEventListener('resize', () => apply());
@@ -223,9 +229,14 @@ function initializePreviewPaneToggle() {
     }
 
     try {
-        previewPaneExpanded = localStorage.getItem(PREVIEW_EXPANDED_KEY) === '1';
+        const savedPreviewState = localStorage.getItem(PREVIEW_EXPANDED_KEY);
+        if (savedPreviewState === null) {
+            previewPaneExpanded = document.documentElement.dataset.device === 'mobile';
+        } else {
+            previewPaneExpanded = savedPreviewState === '1';
+        }
     } catch (_) {
-        previewPaneExpanded = false;
+        previewPaneExpanded = document.documentElement.dataset.device === 'mobile';
     }
     setPreviewPaneExpanded(previewPaneExpanded, { persist: false });
 }
@@ -237,8 +248,14 @@ const GRAPH_ID_KEY = 'graphId';
 let graphId = null;
 let pendingSaveTimer = null;
 const GRAPH_TOPIC_KEY = 'graphTopic';
-const GRAPH_TOPIC_ORIGIN_KEY = 'graphTopicOrigin'; // 'draft' | `share:${code}` | `saved:${code}`
+const GRAPH_TOPIC_ORIGIN_KEY = 'graphTopicOrigin'; 
 const LAST_ACTIVE_GRAPH_KEY_PREFIX = 'lastActiveGraph:v1:';
+
+function getScopedKey(base) {
+    const scope = currentUser && (currentUser.id || currentUser.handle) ? String(currentUser.id || currentUser.handle) : 'draft';
+    return `${base}:${scope}`;
+}
+
 let graphTopic = '';
 let graphTopicOrigin = null;
 let pendingLastActiveGraphRestore = null;
@@ -738,30 +755,91 @@ function setupSidepanel() {
     const sidepanel = document.getElementById('sidepanel');
     const resizer = document.getElementById('sidepanelResizer');
     const toggle = document.getElementById('sidepanelToggle');
+    const mobileToggle = document.getElementById('mobileSidepanelToggle');
+    const backdrop = document.getElementById('sidepanelBackdrop');
     if (!sidepanel || !resizer || !toggle) return;
 
     const root = document.documentElement;
+    function updateDeviceStatus() {
+        const isMobile = window.innerWidth <= 760;
+        const currentDevice = root.dataset.device;
+        const newDevice = isMobile ? 'mobile' : 'desktop';
+        if (currentDevice !== newDevice) {
+            root.dataset.device = newDevice;
+            window.dispatchEvent(new Event('cynode:devicemodechange'));
+        }
+    }
+    window.addEventListener('resize', updateDeviceStatus);
+    updateDeviceStatus();
 
-    const setToggleGlyph = () => {
-        // When panel is open, show << to indicate "close". When collapsed, show >> to indicate "open".
-        toggle.textContent = sidepanel.classList.contains('collapsed') ? '>>' : '<<';
+    const isMobileLayout = () => root.dataset.device === 'mobile';
+
+    const syncMobileChrome = () => {
+        const mobile = isMobileLayout();
+        const open = mobile && !sidepanel.classList.contains('collapsed');
+        if (mobileToggle) {
+            mobileToggle.hidden = !mobile;
+            mobileToggle.textContent = open ? 'Close' : 'Menu';
+            mobileToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            mobileToggle.setAttribute('aria-label', open ? 'Close side panel' : 'Open side panel');
+        }
+        if (backdrop) {
+            backdrop.hidden = !open;
+            backdrop.setAttribute('aria-hidden', open ? 'false' : 'true');
+        }
+        document.body.classList.toggle('mobile-sidepanel-open', open);
     };
 
-    const savedCollapsed = localStorage.getItem(SIDEPANEL_COLLAPSED_KEY);
-    if (savedCollapsed === '1') {
-        sidepanel.classList.add('collapsed');
-    }
-    setToggleGlyph();
+    const setToggleGlyph = () => {
+        const collapsed = sidepanel.classList.contains('collapsed');
+        if (isMobileLayout()) {
+            toggle.textContent = collapsed ? 'Menu' : 'Close';
+            toggle.setAttribute('aria-label', collapsed ? 'Open side panel' : 'Close side panel');
+            toggle.title = collapsed ? 'Open side panel' : 'Close side panel';
+        } else {
+            // When panel is open, show << to indicate "close". When collapsed, show >> to indicate "open".
+            toggle.textContent = collapsed ? '>>' : '<<';
+            toggle.setAttribute('aria-label', collapsed ? 'Expand side panel' : 'Collapse side panel');
+            toggle.title = collapsed ? 'Expand side panel' : 'Collapse side panel';
+        }
+    };
+
+    const setCollapsed = (collapsed, options = {}) => {
+        sidepanel.classList.toggle('collapsed', !!collapsed);
+        if (options.persist !== false) {
+            localStorage.setItem(SIDEPANEL_COLLAPSED_KEY, collapsed ? '1' : '0');
+        }
+        setToggleGlyph();
+        syncMobileChrome();
+    };
 
     const savedWidth = parseInt(localStorage.getItem(SIDEPANEL_WIDTH_KEY) || '', 10);
     if (!isNaN(savedWidth) && savedWidth >= 160 && savedWidth <= 800) {
         root.style.setProperty('--sidepanel-width', `${savedWidth}px`);
     }
 
-    toggle.addEventListener('click', () => {
-        const collapsed = sidepanel.classList.toggle('collapsed');
-        localStorage.setItem(SIDEPANEL_COLLAPSED_KEY, collapsed ? '1' : '0');
-        setToggleGlyph();
+    const savedCollapsed = localStorage.getItem(SIDEPANEL_COLLAPSED_KEY);
+    const initialCollapsed = savedCollapsed === '1' || (savedCollapsed === null && isMobileLayout());
+    setCollapsed(initialCollapsed, { persist: false });
+
+    const togglePanel = () => {
+        setCollapsed(!sidepanel.classList.contains('collapsed'));
+    };
+
+    const closePanelIfMobile = (options = {}) => {
+        if (!isMobileLayout()) return;
+        if (!sidepanel.classList.contains('collapsed')) {
+            setCollapsed(true, options);
+        }
+    };
+
+    toggle.addEventListener('click', togglePanel);
+    mobileToggle?.addEventListener('click', togglePanel);
+    backdrop?.addEventListener('click', () => closePanelIfMobile());
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closePanelIfMobile();
+        }
     });
 
     let dragging = false;
@@ -769,7 +847,7 @@ function setupSidepanel() {
     let startWidth = 0;
 
     const onMove = (e) => {
-        if (!dragging) return;
+        if (!dragging || isMobileLayout()) return;
         const dx = e.clientX - startX;
         const next = Math.max(220, Math.min(520, startWidth + dx));
         root.style.setProperty('--sidepanel-width', `${next}px`);
@@ -787,7 +865,7 @@ function setupSidepanel() {
     };
 
     resizer.addEventListener('mousedown', (e) => {
-        if (sidepanel.classList.contains('collapsed')) return;
+        if (sidepanel.classList.contains('collapsed') || isMobileLayout()) return;
         dragging = true;
         startX = e.clientX;
         startWidth = parseInt(getComputedStyle(sidepanel).width, 10) || 280;
@@ -795,6 +873,19 @@ function setupSidepanel() {
         window.addEventListener('mousemove', onMove);
         window.addEventListener('mouseup', onUp);
     });
+
+    window.addEventListener('cynode:devicemodechange', () => {
+        const saved = localStorage.getItem(SIDEPANEL_COLLAPSED_KEY);
+        if (isMobileLayout()) {
+            setCollapsed(saved === null ? true : saved === '1', { persist: false });
+        } else {
+            setCollapsed(saved === '1', { persist: false });
+        }
+    });
+}
+
+function syncModalBodyLock() {
+    document.body.classList.toggle('modal-open', !!document.querySelector('.modal.visible'));
 }
 
 function saveNodeDataLegacy() {
@@ -842,7 +933,39 @@ async function apiJson(path, options) {
     else headers.delete('content-type');
     init.headers = headers;
 
-    const res = await fetch(fullPath, init);
+    let res;
+    try {
+        res = await fetch(fullPath, init);
+    } catch (e) {
+        if (!navigator.onLine || e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
+            if (path.includes('/api/v1/auth/login') || path.includes('/api/v1/auth/register')) {
+                const bodyJson = init.body ? JSON.parse(init.body) : {};
+                const handle = bodyJson.handle || bodyJson.identifier || (bodyJson.email ? bodyJson.email.split('@')[0] : 'offline_user');
+                const user = { id: 'offline_' + Date.now(), handle: handle, isOffline: true };
+                try { localStorage.setItem('cynode_offline_user', JSON.stringify(user)); } catch (_) {}
+                return { success: true, user };
+            }
+            if (path.includes('/api/v1/me')) {
+                try {
+                    const offUserStr = localStorage.getItem('cynode_offline_user');
+                    if (offUserStr) return { user: JSON.parse(offUserStr) };
+                } catch (_) {}
+                throw new Error("Offline and not logged in locally");
+            }
+            if (path.includes('/api/v1/logout')) {
+                try { localStorage.removeItem('cynode_offline_user'); } catch (_) {}
+                return { success: true };
+            }
+            if (path.includes('/api/v1/saved') && (!init.method || init.method === 'GET')) {
+                return []; // Mock empty saved list if offline
+            }
+            if (path.includes('/api/v1/saved') && (init.method === 'POST' || init.method === 'PUT')) {
+                return { code: 'offline_' + Date.now().toString(36), shareUrl: window.location.origin + '/s/offline' };
+            }
+        }
+        throw e;
+    }
+
     if (!res.ok) {
         const text = await res.text().catch(() => '');
         throw new Error(`API ${res.status} ${res.statusText}${text ? `: ${text}` : ''}`);
@@ -1898,8 +2021,9 @@ async function ensureGraphId() {
         }
     }
 
-    // 2. Try stored graphId (Persistent editing)
-    let id = localStorage.getItem('graphId');
+    // 2. Try stored graphId (Persistent editing) - SCOPED TO USER
+    const storageKey = getScopedKey('graphId');
+    let id = localStorage.getItem(storageKey);
     if (id) {
         try {
             // Validate with backend
@@ -1910,7 +2034,7 @@ async function ensureGraphId() {
             }
         } catch (e) {
             console.warn(`[ensureGraphId] Graph ${id} not found on backend, creating new one.`, e);
-            localStorage.removeItem('graphId');
+            localStorage.removeItem(storageKey);
         }
     }
 
@@ -1921,7 +2045,7 @@ async function ensureGraphId() {
             body: JSON.stringify({ nodeCount: currentNodeCount })
         });
         if (newGraph && newGraph.id) {
-            localStorage.setItem('graphId', newGraph.id);
+            localStorage.setItem(storageKey, newGraph.id);
             console.log("[ensureGraphId] Created new graph:", newGraph.id);
             return newGraph.id;
         }
@@ -2112,11 +2236,19 @@ function scheduleApiSave({ flush = false } = {}) {
 
 function saveNodeData(options) {
     scheduleApiSave(options);
+    
+    // Also save to Scoped Storage for disaster recovery/refresh
+    const storageKey = getScopedKey('graph_snapshot');
+    try {
+        localStorage.setItem(storageKey, JSON.stringify({
+            nodeCount: currentNodeCount,
+            nodeUrls,
+            nodeCaptions,
+            nodeExtraDelaySecByNode
+        }));
+    } catch (_) { }
 }
 
-/**
- * Loads saved state from backend (preferred), or localStorage fallback.
- */
 async function loadSavedNodeData() {
     try {
         const id = await ensureGraphId();
@@ -2150,6 +2282,8 @@ async function loadSavedNodeData() {
                         findAndSetInitialNode();
                     }
                 }
+                
+                // ... Rest of the function remains the same ...
 
                 // --- Mode Preservation (Decoupled Timers for Personal Graph) ---
                 // IMPORTANT: We PRESERVE the user's explicit mode preference instead of auto-forcing.
@@ -2774,6 +2908,7 @@ function showModal(modalId) {
         requestAnimationFrame(() => {
             modal.classList.add('visible');
             modalBackdrop.classList.add('visible');
+            syncModalBodyLock();
         });
     } else {
         console.error(`Modal element not found for ID: ${modalId}`);
@@ -2799,6 +2934,7 @@ function hideModal(modalId) {
             if (!otherModalsVisible && modalBackdrop) {
                 modalBackdrop.style.display = 'none';
             }
+            syncModalBodyLock();
         }, 300); // Adjust timing based on CSS transition duration (0.3s)
     }
 }
@@ -2820,6 +2956,7 @@ function hideAllModals() {
             if (!anyModalVisible) {
                 modalBackdrop.style.display = 'none';
             }
+            syncModalBodyLock();
         }, 300);
     }
 }
@@ -3163,14 +3300,24 @@ async function sendPageBridgeRequest(action, payload) {
 }
 
 async function requestBrowserBridge(action, payload = {}) {
-    const response = isExtensionPageContext()
-        ? await sendRuntimeBridgeRequest(action, payload)
-        : await sendPageBridgeRequest(action, payload);
+    try {
+        if (typeof window !== 'undefined' && window.cynodeDesktop && window.cynodeDesktop.isElectron) {
+            throw new Error('Running in Desktop application. Browser extensions are only available in regular web browsers.');
+        }
 
-    if (!response || response.ok !== true) {
-        const errorMessage = response && response.error ? String(response.error) : 'bridge_unavailable';
-        throw new Error(errorMessage);
-    }
+        const isPWA = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+        if (isPWA && !isExtensionPageContext()) {
+            console.warn('PWA Mode: Extensions may not communicate properly in standalone PWAs on all browsers.');
+        }
+
+        const response = isExtensionPageContext()
+            ? await sendRuntimeBridgeRequest(action, payload)
+            : await sendPageBridgeRequest(action, payload);
+
+        if (!response || response.ok !== true) {
+            const errorMessage = response && response.error ? String(response.error) : 'bridge_unavailable';
+            throw new Error(errorMessage);
+        }
 
     setBrowserBridgeState({
         available: true,
@@ -3180,6 +3327,10 @@ async function requestBrowserBridge(action, payload = {}) {
         lastError: '',
     });
     return response;
+    } catch (e) {
+        console.warn('Browser Bridge safely aborted:', e);
+        throw e;
+    }
 }
 
 async function refreshBrowserBridgeStatus({ silent = false } = {}) {
@@ -4000,6 +4151,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (signOutBtn) signOutBtn.style.display = '';
             if (signInBtn) signInBtn.style.display = 'none';
             if (authForm) authForm.style.display = 'none';
+            const manageAccountLink = document.getElementById('manageAccountLink');
+            if (manageAccountLink) manageAccountLink.style.display = '';
             if (tierOverview) {
                 const lines = [];
                 const up = me && me.userPlan ? me.userPlan : null;
@@ -4041,6 +4194,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderSavedLinks([]);
             if (billingSection) billingSection.style.display = 'none';
             if (dashboardSection) dashboardSection.style.display = 'none';
+            const manageAccountLink = document.getElementById('manageAccountLink');
+            if (manageAccountLink) manageAccountLink.style.display = 'none';
         }
     } catch (e) {
         currentUser = null;
@@ -4053,6 +4208,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderSavedLinks([]);
         if (billingSection) billingSection.style.display = 'none';
         if (dashboardSection) dashboardSection.style.display = 'none';
+        const manageAccountLink = document.getElementById('manageAccountLink');
+        if (manageAccountLink) manageAccountLink.style.display = 'none';
     }
 
     signInBtn?.addEventListener('click', () => {
@@ -4066,6 +4223,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             await apiJson('/api/v1/logout', { method: 'POST', body: '{}' });
         } catch (_) { }
+        
+        // Explicitly clear memory state
+        currentUser = null;
+        graphTopicOrigin = null;
+        graphTopic = '';
+        currentSavedShareCode = null;
+        
         window.location.reload();
     });
 

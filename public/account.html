@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manage Account | Cynode</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <style>
+    .account-container {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    .account-header {
+      margin-bottom: 30px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    .account-header h1 {
+      margin: 0;
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--accent);
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 700;
+        margin-bottom: 20px;
+    }
+    .back-link:hover {
+        text-decoration: underline;
+    }
+    .settings-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+    }
+    .settings-title {
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .form-input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--panel-border);
+      background: var(--app-bg);
+      border-radius: 10px;
+      font-size: 14px;
+      color: var(--text);
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+    }
+    .form-input:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+    .save-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .save-btn:hover {
+      background: color-mix(in srgb, var(--accent) 90%, black);
+    }
+    .save-btn:active {
+      transform: scale(0.98);
+    }
+    .save-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+    }
+    .status-msg {
+        margin-top: 15px;
+        font-size: 13px;
+        padding: 10px;
+        border-radius: 8px;
+        display: none;
+    }
+    .status-success {
+        display: block;
+        background: rgba(16, 185, 129, 0.1);
+        color: #059669;
+        border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+    .status-error {
+        display: block;
+        background: rgba(239, 68, 68, 0.1);
+        color: #dc2626;
+        border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+    .profile-info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+    }
+    .info-item {
+        margin-bottom: 20px;
+    }
+    .info-label {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+        margin-bottom: 4px;
+    }
+    .info-value {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <div class="account-container">
+    <a href="/" class="back-link">
+        <i class="fas fa-arrow-left"></i>
+        Back to App
+    </a>
+
+    <header class="account-header">
+      <i class="fas fa-user-circle fa-2x" style="color: var(--accent);"></i>
+      <h1>Account Settings</h1>
+    </header>
+
+    <div class="settings-card">
+        <div class="settings-title"><i class="fas fa-id-card"></i> Profile Overview</div>
+        <div class="profile-info-grid">
+            <div class="info-item">
+                <div class="info-label">Handle</div>
+                <div class="info-value" id="viewHandle">---</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">User ID</div>
+                <div class="info-value" id="viewId" style="font-family: monospace; font-size: 11px; opacity: 0.7;">---</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-card">
+        <div class="settings-title"><i class="fas fa-edit"></i> Edit Profile</div>
+        <form id="profileForm">
+            <div class="form-group">
+                <label class="form-label" for="displayName">Display Name</label>
+                <input class="form-input" type="text" id="displayName" placeholder="e.g. Joe Doe">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="email">Email Address</label>
+                <input class="form-input" type="email" id="email" placeholder="joe@example.com">
+            </div>
+            <button type="submit" class="save-btn" id="saveProfileBtn">Update Profile</button>
+            <div id="profileStatus" class="status-msg"></div>
+        </form>
+    </div>
+
+    <div class="settings-card">
+        <div class="settings-title"><i class="fas fa-key"></i> Change Password</div>
+        <form id="passwordForm">
+            <div class="form-group">
+                <label class="form-label" for="currentPassword">Current Password</label>
+                <input class="form-input" type="password" id="currentPassword" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="newPassword">New Password</label>
+                <input class="form-input" type="password" id="newPassword" minlength="6" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="confirmPassword">Confirm New Password</label>
+                <input class="form-input" type="password" id="confirmPassword" minlength="6" required>
+            </div>
+            <button type="submit" class="save-btn" id="savePasswordBtn">Update Password</button>
+            <div id="passwordStatus" class="status-msg"></div>
+        </form>
+    </div>
+  </div>
+
+  <script src="/account.js"></script>
+</body>
+</html>

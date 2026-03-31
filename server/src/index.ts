@@ -119,6 +119,12 @@ await app.register(fastifyStatic, {
 
 await registerRoutes(app);
 
+// Simple page routes
+app.get("/account", (req, reply) => (reply as any).sendFile("account.html"));
+app.get("/analytics", (req, reply) => (reply as any).sendFile("analytics.html"));
+app.get("/pricing", (req, reply) => (reply as any).sendFile("pricing.html"));
+app.get("/downloads", (req, reply) => (reply as any).sendFile("downloads.html"));
+
 // Short URL redirect to the SPA with a share code.
 app.get<{ Params: { code: string } }>("/s/:code", async (req, reply) => {
   const code = encodeURIComponent(req.params.code);

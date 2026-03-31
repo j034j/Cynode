@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { getPrisma } from "./db.js";
+import { pushUserWorkToCloud } from "./sync.js";
 
 export type GraphState = {
   id: string;
@@ -288,6 +289,13 @@ export async function createShareFromGraphState(
         const created = await prisma.share.create({
           data: { code, graphId: graph.id, createdByUserId, organizationId, saved, topic },
         });
+
+        if (createdByUserId) {
+          pushUserWorkToCloud(createdByUserId).catch((err) =>
+            console.error("[Sync] Background push from store failed:", err.message)
+          );
+        }
+
         return {
           code: created.code,
           graphId: created.graphId,

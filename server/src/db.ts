@@ -6,19 +6,26 @@ let prisma: PrismaClient | null = null;
 
 export function getPrisma(): PrismaClient {
   if (!prisma) {
-    const url = process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL || "";
+    const tursoUrl = process.env.TURSO_DATABASE_URL;
+    const localUrl = process.env.DATABASE_URL;
     
-    // In Vercel serverless environment, if we are NOT using Turso/Remote DB, 
-    // we need to be careful with SQLite. However, since the user is using Turso 
-    // for deployment, we should ensure the adapter is always used when a remote URL is present.
+    // Determine if we should use the remote database (Turso)
+    // We use remote if:
+    // 1. We are running on Vercel (production) AND Turso URL is provided.
+    // 2. OR USE_REMOTE_DB=true is explicitly set.
+    const useRemote = (process.env.VERCEL && tursoUrl) || process.env.USE_REMOTE_DB === "true";
+    
+    const url = useRemote ? (tursoUrl || localUrl || "") : (localUrl || tursoUrl || "");
+    
     if (url.startsWith("libsql://") || url.startsWith("https://")) {
+      console.log("[db] Initializing Prisma with LibSql adapter (Remote)");
       const adapter = new PrismaLibSql({
         url,
         authToken: process.env.TURSO_AUTH_TOKEN,
       });
       prisma = new PrismaClient({ adapter });
     } else {
-      // Local SQLite
+      console.log("[db] Initializing Prisma with default SQLite (Local)");
       prisma = new PrismaClient();
     }
   }

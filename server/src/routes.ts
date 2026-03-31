@@ -12,6 +12,7 @@ import { getPlans, isUnlimitedUser, planByKey, addUsage, creditsForMediaBytes, c
 import { UAParser } from "ua-parser-js";
 import geoip from "geoip-lite";
 import { buildAppUrl, getPublicOrigin, getRequestProtocol } from "./origin.js";
+import { pushUserWorkToCloud, pullUserWorkFromCloud, findAndPullRemoteUser } from "./sync.js";
 
 // JSON object keys are always strings; we accept numeric-string keys like "1", "2", ...
 const NodeUrlsSchema = z.record(z.string().regex(/^\d+$/), z.string());
@@ -1324,6 +1325,11 @@ export async function registerRoutes(app: FastifyInstance) {
         });
 
         await createSessionAndSetCookie(reply, req as any, created.id);
+        
+        // Background sync: Naturally Pull then Push for seamless experience.
+        pullUserWorkFromCloud(created.id).catch(err => console.warn("[Sync] Background Pull Error:", err));
+        pushUserWorkToCloud(created.id).catch(err => console.warn("[Sync] Background Push Error:", err));
+        
         reply.code(201);
         return {
           user: {
@@ -1363,16 +1369,30 @@ export async function registerRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const prisma = getPrisma();
       const ident = req.body.identifier.trim().toLowerCase();
-      const user =
+      let user =
         ident.includes("@")
           ? await prisma.user.findUnique({ where: { email: ident } })
           : await prisma.user.findUnique({ where: { handle: ident } });
+
+      // If not found locally, try to find and pull from remote (Turso)
+      if (!user) {
+        const foundRemote = await findAndPullRemoteUser(ident);
+        if (foundRemote) {
+          user = ident.includes("@")
+            ? await prisma.user.findUnique({ where: { email: ident } })
+            : await prisma.user.findUnique({ where: { handle: ident } });
+        }
+      }
 
       if (!user || !user.passwordHash || !verifyPassword(req.body.password, user.passwordHash)) {
         return reply.code(401).send({ error: "invalid_credentials" });
       }
 
       await createSessionAndSetCookie(reply, req as any, user.id);
+      
+      // Background sync: Naturally Pull then Push for seamless experience.
+      pullUserWorkFromCloud(user.id).catch(err => console.warn("[Sync] Background Pull Error:", err));
+      pushUserWorkToCloud(user.id).catch(err => console.warn("[Sync] Background Push Error:", err));
       return {
         user: {
           id: user.id,
@@ -1446,6 +1466,95 @@ export async function registerRoutes(app: FastifyInstance) {
         })),
       };
     },
+  );
+
+  const ProfileUpdateSchema = z.object({
+    displayName: z.string().min(2).max(100).optional(),
+    email: z.string().email().max(255).optional(),
+  });
+
+  const PasswordUpdateSchema = z.object({
+    currentPassword: z.string().min(1),
+    newPassword: z.string().min(6).max(255),
+  });
+
+  app.patch<{ Body: z.infer<typeof ProfileUpdateSchema> }>(
+    "/api/v1/user/profile",
+    {
+      schema: {
+        body: ProfileUpdateSchema,
+        response: {
+          200: z.object({ success: z.boolean() }),
+          401: z.object({ error: z.literal("unauthorized") }),
+          409: z.object({ error: z.literal("email_already_taken") }),
+        },
+      },
+    },
+    async (req, reply) => {
+      requireUser(req as any);
+      const user = (req as any).user;
+      const prisma = getPrisma();
+
+      try {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            displayName: req.body.displayName,
+            email: req.body.email,
+          },
+        });
+        
+        // Background sync to cloud
+        void pushUserWorkToCloud(user.id);
+        
+        return { success: true };
+      } catch (err: any) {
+        if (typeof err?.code === "string" && err.code === "P2002") {
+          return reply.code(409).send({ error: "email_already_taken" });
+        }
+        throw err;
+      }
+    }
+  );
+
+  app.patch<{ Body: z.infer<typeof PasswordUpdateSchema> }>(
+    "/api/v1/user/password",
+    {
+      schema: {
+        body: PasswordUpdateSchema,
+        response: {
+          200: z.object({ success: z.boolean() }),
+          401: z.object({ error: z.literal("unauthorized") }),
+          403: z.object({ error: z.literal("invalid_current_password") }),
+        },
+      },
+    },
+    async (req, reply) => {
+      requireUser(req as any);
+      const user = (req as any).user;
+      const prisma = getPrisma();
+
+      // Get the current persistent user with passwordHash
+      const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+      if (!dbUser || !dbUser.passwordHash) {
+        return reply.code(401).send({ error: "unauthorized" });
+      }
+
+      if (!verifyPassword(req.body.currentPassword, dbUser.passwordHash)) {
+        return reply.code(403).send({ error: "invalid_current_password" });
+      }
+
+      const newHash = hashPassword(req.body.newPassword);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordHash: newHash },
+      });
+
+      // Background sync to cloud
+      void pushUserWorkToCloud(user.id);
+
+      return { success: true };
+    }
   );
 
   app.get(
@@ -1678,6 +1787,12 @@ export async function registerRoutes(app: FastifyInstance) {
         saved: false,
         topic: req.body.topic ?? null,
       });
+
+      // Background push to cloud
+      if (user) {
+        pushUserWorkToCloud(user.id).catch(err => console.warn("[Sync] Share-create background push failed:", err.message));
+      }
+
       const baseUrl = getBaseUrl(req);
       const proto = getProto(req);
 
@@ -1700,7 +1815,7 @@ export async function registerRoutes(app: FastifyInstance) {
         createdAt: share.createdAt,
         topic: share.topic ?? null,
       };
-    },
+    }
   );
 
   // Save a nodegraph state to the signed-in user's account and return a branded short link.

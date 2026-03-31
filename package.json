@@ -8,10 +8,13 @@
     "type": "git",
     "url": "https://github.com/j034j/Cynode.git"
   },
+  "engines": {
+    "node": "20.x"
+  },
   "type": "module",
   "main": "desktop/main.cjs",
   "scripts": {
-    "postinstall": "node scripts/postinstall-prisma-win.mjs && node scripts/sync-chartjs.mjs && node scripts/sync-desktop-assets.mjs",
+    "postinstall": "node scripts/deploy-guard.mjs",
     "dev": "tsx watch server/src/index.ts",
     "start": "node server/dist/index.js",
     "start:prod": "node --enable-source-maps server/dist/index.js",
@@ -31,142 +34,11 @@
     "db:generate:mysql": "prisma generate --schema server/prisma/schema.mysql.prisma",
     "db:migrate": "prisma migrate dev --schema server/prisma/schema.prisma",
     "db:migrate:turso": "node scripts/migrate-turso.mjs",
+    "db:push:turso": "node scripts/push-data-to-turso.mjs",
     "db:migrate:postgres": "prisma migrate dev --schema server/prisma/schema.postgres.prisma",
     "db:migrate:mysql": "prisma migrate dev --schema server/prisma/schema.mysql.prisma",
     "db:studio": "prisma studio --schema server/prisma/schema.prisma",
     "db:studio:postgres": "prisma studio --schema server/prisma/schema.postgres.prisma",
     "db:studio:mysql": "prisma studio --schema server/prisma/schema.mysql.prisma"
-  },
-  "dependencies": {
-    "@fastify/cookie": "^11.0.2",
-    "@fastify/cors": "^10.0.1",
-    "@fastify/multipart": "^9.4.0",
-    "@fastify/oauth2": "^8.2.0",
-    "@fastify/rate-limit": "^10.2.0",
-    "@fastify/static": "^9.0.0",
-    "@fastify/swagger": "^9.7.0",
-    "@fastify/swagger-ui": "^5.2.5",
-    "@libsql/client": "^0.17.0",
-    "@prisma/adapter-libsql": "^7.5.0",
-    "@prisma/client": "6.19.2",
-    "chart.js": "^4.5.1",
-    "dotenv": "^16.4.5",
-    "fastify": "^5.2.1",
-    "fastify-raw-body": "^5.0.0",
-    "fastify-type-provider-zod": "^5.0.0",
-    "geoip-lite": "^1.4.10",
-    "stripe": "^20.4.1",
-    "ua-parser-js": "^2.0.9",
-    "ws": "^8.19.0",
-    "zod": "^3.24.2"
-  },
-  "devDependencies": {
-    "@types/geoip-lite": "^1.4.4",
-    "@types/node": "^22.13.10",
-    "@types/ua-parser-js": "^0.7.39",
-    "electron": "^35.0.0",
-    "electron-builder": "^24.13.3",
-    "prisma": "6.19.2",
-    "tsx": "^4.19.3",
-    "typescript": "^5.7.3"
-  },
-  "build": {
-    "appId": "com.cynode.desktop",
-    "productName": "Cynode Desktop",
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
-    "asar": true,
-    "files": [
-      "desktop/**/*",
-      "package.json"
-    ],
-    "protocols": [
-      {
-        "name": "Cynode Protocol",
-        "schemes": [
-          "cynode"
-        ]
-      }
-    ],
-    "directories": {
-      "output": "dist-desktop",
-      "buildResources": "build"
-    },
-    "win": {
-      "icon": "icon.ico",
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "mac": {
-      "icon": "icon.icns",
-      "category": "public.app-category.productivity",
-      "darkModeSupport": true,
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
-      ]
-    },
-    "linux": {
-      "icon": "icon.png",
-      "category": "Office",
-      "target": [
-        {
-          "target": "AppImage",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
-          "target": "deb",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "tar.gz",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": "always",
-      "createStartMenuShortcut": true,
-      "shortcutName": "Cynode Desktop",
-      "installerIcon": "icon.ico",
-      "installerHeaderIcon": "icon.ico",
-      "uninstallerIcon": "icon.ico"
-    },
-    "portable": {
-      "artifactName": "${productName}-${version}-portable.${ext}"
-    }
   }
 }

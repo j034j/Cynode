@@ -15,6 +15,10 @@
 </head>
 <body>
   <div class="app-shell">
+    <button id="mobileSidepanelToggle" class="mobile-sidepanel-toggle" type="button" aria-label="Open side panel" aria-controls="sidepanel" aria-expanded="false">
+      Menu
+    </button>
+    <button id="sidepanelBackdrop" class="sidepanel-backdrop" type="button" aria-label="Close side panel" aria-hidden="true" tabindex="-1"></button>
     <aside class="sidepanel" id="sidepanel" aria-label="Account and settings panel">
       <div class="sidepanel-top">
         <button id="sidepanelToggle" class="sidepanel-toggle" type="button" aria-label="Toggle side panel"></button>
@@ -39,6 +43,9 @@
           </div>
           <div class="sidepanel-hint" style="margin-top:6px;">
             <a class="saved-link" href="/downloads">Download desktop app</a>
+          </div>
+          <div class="sidepanel-hint" style="margin-top:6px;" id="manageAccountLink" style="display:none;">
+            <a class="saved-link" href="/account">Manage account</a>
           </div>
 
           <div id="authForm" class="auth-form" style="display:none;">
