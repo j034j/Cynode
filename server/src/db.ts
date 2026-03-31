@@ -14,15 +14,20 @@ export async function getPrisma(): Promise<PrismaClient> {
     const tursoToken = process.env.TURSO_AUTH_TOKEN;
     const localUrl = process.env.DATABASE_URL || "file:./prisma/dev.db";
     
+    // Remote connection check
     const isRemote = (process.env.VERCEL && tursoUrl) || process.env.USE_REMOTE_DB === "true";
     const url = isRemote ? (tursoUrl || localUrl) : localUrl;
+    
+    if (process.env.VERCEL && !tursoUrl) {
+      console.warn("[db] CRITICAL WARNING: Running on Vercel but TURSO_DATABASE_URL is missing. DB calls WILL FAIL.");
+    }
     
     console.log(`[db] Mode: ${isRemote ? "Remote (Turso)" : "Local (SQLite)"}`);
     
     try {
       if (isRemote && url && (url.startsWith("libsql://") || url.startsWith("https://"))) {
         console.log("[db] Initializing LibSql Factory & Connecting...");
-        const factory = new PrismaLibSql({ url, authToken: tursoToken });
+        const factory = new PrismaLibSql({ url, authToken: tursoToken }) as any;
         const adapter = await factory.connect();
         prisma = new PrismaClient({ adapter });
       } else {
