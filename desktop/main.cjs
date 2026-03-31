@@ -193,6 +193,33 @@ function openInAppViewer(targetUrl, options = {}) {
     throw new Error('unsupported_url');
   }
 
+  // Ensure viewer partition has current session cookie available.
+  (async () => {
+    try {
+      const sess = session.fromPartition(WINDOW_PARTITION);
+      const startUrl = resolveStartUrl();
+      // Try to read existing sid cookie and re-set it so the viewer has access.
+      const cookies = await sess.cookies.get({ url: startUrl, name: 'sid' });
+      if (Array.isArray(cookies) && cookies.length > 0) {
+        const sid = cookies[0];
+        // Re-set with same properties to ensure availability for new windows
+        await sess.cookies.set({
+          url: startUrl,
+          name: sid.name,
+          value: sid.value,
+          domain: sid.domain || new URL(startUrl).hostname,
+          path: sid.path || '/',
+          httpOnly: Boolean(sid.httpOnly),
+          secure: Boolean(sid.secure),
+          expirationDate: sid.expirationDate || Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+        });
+      }
+    } catch (err) {
+      // Non-fatal, continue opening viewer even if cookie sync fails.
+      console.warn('openInAppViewer: ensuring session cookie failed:', err);
+    }
+  })();
+
   const win = sendViewerCommand('cynode-viewer:open-url', {
     url: String(targetUrl),
     title: options.title ? String(options.title) : 'Cynode Viewer',

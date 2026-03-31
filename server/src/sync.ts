@@ -10,8 +10,9 @@ function getRemotePrisma(): PrismaClient | null {
   
   const url = process.env.TURSO_DATABASE_URL;
   const authToken = process.env.TURSO_AUTH_TOKEN;
-  
-  if (!url || !authToken || process.env.VERCEL) return null;
+
+  // Allow remote Prisma initialization on Vercel as long as the TURSO envs are present.
+  if (!url || !authToken) return null;
   
   try {
     const client = createClient({ url, authToken });
@@ -32,17 +33,23 @@ export async function pushUserWorkToCloud(userId: string) {
   try {
     const user = await local.user.findUnique({ where: { id: userId } });
     if (user) {
-      await remote.user.upsert({
-        where: { id: userId },
-        update: { handle: user.handle, email: user.email, displayName: user.displayName, passwordHash: user.passwordHash },
-        create: { 
-          id: user.id,
-          handle: user.handle,
-          email: user.email,
-          displayName: user.displayName,
-          passwordHash: user.passwordHash
-        }
-      });
+      // Check remote freshness: if remote has a newer updatedAt, skip overwriting.
+      const remoteUser = await remote.user.findUnique({ where: { id: userId } });
+      if (remoteUser && remoteUser.updatedAt && user.updatedAt && remoteUser.updatedAt > user.updatedAt) {
+        console.log(`[Sync] Skipping user upsert for ${userId}: remote is fresher`);
+      } else {
+        await remote.user.upsert({
+          where: { id: userId },
+          update: { handle: user.handle, email: user.email, displayName: user.displayName, passwordHash: user.passwordHash },
+          create: { 
+            id: user.id,
+            handle: user.handle,
+            email: user.email,
+            displayName: user.displayName,
+            passwordHash: user.passwordHash
+          }
+        });
+      }
     }
 
     const shares = await local.share.findMany({
@@ -51,26 +58,37 @@ export async function pushUserWorkToCloud(userId: string) {
     });
 
     for (const share of shares) {
-      await remote.graph.upsert({
-        where: { id: share.graph.id },
-        update: { nodeCount: share.graph.nodeCount, lastSelectedNode: share.graph.lastSelectedNode },
-        create: { id: share.graph.id, nodeCount: share.graph.nodeCount, lastSelectedNode: share.graph.lastSelectedNode }
-      });
-
-      for (const node of share.graph.nodes) {
-        await remote.node.upsert({
-          where: { graphId_index: { graphId: share.graph.id, index: node.index } },
-          update: { url: node.url, title: node.title, caption: node.caption, pauseSec: node.pauseSec },
-          create: { 
-            id: node.id,
-            graphId: node.graphId,
-            index: node.index,
-            url: node.url,
-            title: node.title,
-            caption: node.caption,
-            pauseSec: node.pauseSec
-          }
+      // Graph: only upsert if local is newer than remote (if remote exists)
+      const remoteGraph = await remote.graph.findUnique({ where: { id: share.graph.id } });
+      if (remoteGraph && remoteGraph.updatedAt && share.graph.updatedAt && remoteGraph.updatedAt > share.graph.updatedAt) {
+        console.log(`[Sync] Skipping graph upsert for ${share.graph.id}: remote is fresher`);
+      } else {
+        await remote.graph.upsert({
+          where: { id: share.graph.id },
+          update: { nodeCount: share.graph.nodeCount, lastSelectedNode: share.graph.lastSelectedNode },
+          create: { id: share.graph.id, nodeCount: share.graph.nodeCount, lastSelectedNode: share.graph.lastSelectedNode }
         });
+
+        for (const node of share.graph.nodes) {
+          const remoteNode = await remote.node.findUnique({ where: { graphId_index: { graphId: share.graph.id, index: node.index } } });
+          if (remoteNode && remoteNode.updatedAt && node.updatedAt && remoteNode.updatedAt > node.updatedAt) {
+            console.log(`[Sync] Skipping node upsert for graph ${share.graph.id} index ${node.index}: remote is fresher`);
+            continue;
+          }
+          await remote.node.upsert({
+            where: { graphId_index: { graphId: share.graph.id, index: node.index } },
+            update: { url: node.url, title: node.title, caption: node.caption, pauseSec: node.pauseSec },
+            create: { 
+              id: node.id,
+              graphId: node.graphId,
+              index: node.index,
+              url: node.url,
+              title: node.title,
+              caption: node.caption,
+              pauseSec: node.pauseSec
+            }
+          });
+        }
       }
 
       await remote.share.upsert({
@@ -100,17 +118,22 @@ export async function pullUserWorkFromCloud(userId: string) {
   try {
     const remoteUser = await remote.user.findUnique({ where: { id: userId } });
     if (remoteUser) {
-      await local.user.upsert({
-        where: { id: userId },
-        update: { handle: remoteUser.handle, email: remoteUser.email, displayName: remoteUser.displayName, passwordHash: remoteUser.passwordHash },
-        create: { 
-          id: remoteUser.id,
-          handle: remoteUser.handle,
-          email: remoteUser.email,
-          displayName: remoteUser.displayName,
-          passwordHash: remoteUser.passwordHash
-        }
-      });
+      const localUser = await local.user.findUnique({ where: { id: userId } });
+      if (localUser && localUser.updatedAt && remoteUser.updatedAt && localUser.updatedAt > remoteUser.updatedAt) {
+        console.log(`[Sync] Skipping local user upsert for ${userId}: local is fresher`);
+      } else {
+        await local.user.upsert({
+          where: { id: userId },
+          update: { handle: remoteUser.handle, email: remoteUser.email, displayName: remoteUser.displayName, passwordHash: remoteUser.passwordHash },
+          create: { 
+            id: remoteUser.id,
+            handle: remoteUser.handle,
+            email: remoteUser.email,
+            displayName: remoteUser.displayName,
+            passwordHash: remoteUser.passwordHash
+          }
+        });
+      }
     }
 
     const remoteShares = await remote.share.findMany({
@@ -119,26 +142,36 @@ export async function pullUserWorkFromCloud(userId: string) {
     });
 
     for (const share of remoteShares) {
-      await local.graph.upsert({
-        where: { id: share.graph.id },
-        update: { nodeCount: share.graph.nodeCount, lastSelectedNode: share.graph.lastSelectedNode },
-        create: { id: share.graph.id, nodeCount: share.graph.nodeCount, lastSelectedNode: share.graph.lastSelectedNode }
-      });
-
-      for (const node of share.graph.nodes) {
-        await local.node.upsert({
-          where: { graphId_index: { graphId: share.graph.id, index: node.index } },
-          update: { url: node.url, title: node.title, caption: node.caption, pauseSec: node.pauseSec },
-          create: { 
-            id: node.id,
-            graphId: node.graphId,
-            index: node.index,
-            url: node.url,
-            title: node.title,
-            caption: node.caption,
-            pauseSec: node.pauseSec
-          }
+      const localGraph = await local.graph.findUnique({ where: { id: share.graph.id } });
+      if (localGraph && localGraph.updatedAt && share.graph.updatedAt && localGraph.updatedAt > share.graph.updatedAt) {
+        console.log(`[Sync] Skipping local graph upsert for ${share.graph.id}: local is fresher`);
+      } else {
+        await local.graph.upsert({
+          where: { id: share.graph.id },
+          update: { nodeCount: share.graph.nodeCount, lastSelectedNode: share.graph.lastSelectedNode },
+          create: { id: share.graph.id, nodeCount: share.graph.nodeCount, lastSelectedNode: share.graph.lastSelectedNode }
         });
+
+        for (const node of share.graph.nodes) {
+          const localNode = await local.node.findUnique({ where: { graphId_index: { graphId: share.graph.id, index: node.index } } });
+          if (localNode && localNode.updatedAt && node.updatedAt && localNode.updatedAt > node.updatedAt) {
+            console.log(`[Sync] Skipping local node upsert for graph ${share.graph.id} index ${node.index}: local is fresher`);
+            continue;
+          }
+          await local.node.upsert({
+            where: { graphId_index: { graphId: share.graph.id, index: node.index } },
+            update: { url: node.url, title: node.title, caption: node.caption, pauseSec: node.pauseSec },
+            create: { 
+              id: node.id,
+              graphId: node.graphId,
+              index: node.index,
+              url: node.url,
+              title: node.title,
+              caption: node.caption,
+              pauseSec: node.pauseSec
+            }
+          });
+        }
       }
 
       await local.share.upsert({

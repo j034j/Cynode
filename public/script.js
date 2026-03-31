@@ -882,6 +882,25 @@ function setupSidepanel() {
             setCollapsed(saved === '1', { persist: false });
         }
     });
+
+    // Ensure ARIA attributes are in sync for assistive tech
+    const syncAria = () => {
+        const expanded = !sidepanel.classList.contains('collapsed') && isMobileLayout();
+        if (mobileToggle) mobileToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        if (backdrop) backdrop.setAttribute('aria-hidden', expanded ? 'false' : 'true');
+    };
+    // Keep in sync after toggles
+    const origSetCollapsed = setCollapsed;
+    setCollapsed = (collapsed, options) => {
+        // call original implementation which is now in closure; we already defined setCollapsed earlier; to avoid complex refactor just call side effects
+        sidepanel.classList.toggle('collapsed', !!collapsed);
+        if (options === undefined || options.persist !== false) {
+            try { localStorage.setItem(SIDEPANEL_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch(_){}
+        }
+        setToggleGlyph();
+        syncMobileChrome();
+        syncAria();
+    };
 }
 
 function syncModalBodyLock() {

@@ -12,6 +12,28 @@
   <link rel="stylesheet" href="/styles.css?v=0326_browserimport">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <title>Node Graph URL Manager</title>
+  <script>
+    // Platform detection: populate `window.CYNODE_PLATFORM` and `data-platform`.
+    (function(){
+      function detectPlatform(){
+        try{
+          const ua = navigator.userAgent || '';
+          const isElectron = typeof window !== 'undefined' && !!window.cynodeDesktop;
+          if (isElectron) return 'desktop-electron';
+          if (window.navigator && navigator.standalone === true && /iPhone|iPad|iPod/.test(ua)) return 'pwa-ios';
+          if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches && /Android/.test(ua)) return 'pwa-android';
+          if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return 'pwa-standalone';
+          return 'web-browser';
+        }catch(e){ return 'web-browser'; }
+      }
+      try{
+        window.CYNODE_PLATFORM = detectPlatform();
+        document.documentElement.dataset.platform = window.CYNODE_PLATFORM;
+        // iOS PWA has flaky IndexedDB; prefer localStorage there.
+        if (window.CYNODE_PLATFORM === 'pwa-ios') window.CYNODE_USE_LOCALSTORAGE_PRIMARY = true;
+      }catch(e){}
+    })();
+  </script>
 </head>
 <body>
   <div class="app-shell">

@@ -99,6 +99,27 @@ app.addHook("preHandler", async (req) => {
   req.user = await loadUserFromSession(req);
 });
 
+// Ensure sensitive/auth endpoints are not cached by intermediaries or the
+// service worker. This helps prevent stale profile data being shown after
+// changes (especially on Vercel where caching can be aggressive).
+app.addHook("onSend", (req, reply, payload, done) => {
+  try {
+    const url = typeof req.url === "string" ? req.url : (req.raw && req.raw.url) || "";
+    if (
+      url.startsWith("/api/v1/me") ||
+      url.startsWith("/api/v1/user") ||
+      url.startsWith("/api/v1/auth")
+    ) {
+      reply.header("Cache-Control", "no-cache, no-store, must-revalidate");
+      reply.header("Pragma", "no-cache");
+      reply.header("Expires", "0");
+    }
+  } catch (e) {
+    // Don't block response on header-setting errors
+  }
+  done();
+});
+
 await app.register(fastifySwagger, {
   openapi: {
     info: { title: "Cynode API", version: "0.1.0" },

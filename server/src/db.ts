@@ -23,7 +23,9 @@ export async function getPrisma(): Promise<PrismaClient> {
     console.log(`[db] TURSO_URL_PRESENT: ${!!tursoUrl}`);
 
     if (process.env.VERCEL && !tursoUrl) {
-      console.warn("[db] CRITICAL WARNING: Running on Vercel but TURSO_DATABASE_URL is missing. DB calls WILL FAIL.");
+      console.error("[db] FATAL: Running on Vercel but TURSO_DATABASE_URL is missing. Refusing to initialize remote DB.");
+      // Fail fast to avoid running with an unsupported local SQLite DB in serverless environment
+      throw new Error("TURSO_DATABASE_URL is required on Vercel deployments");
     }
     
     try {

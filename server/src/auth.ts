@@ -76,12 +76,16 @@ export async function loadUserFromSession(req: FastifyRequest): Promise<AuthUser
       avatarUrl: session.user.avatarUrl ?? null,
       email: session.user.email ?? null,
     };
-  } catch (err) {
-    // The LibSQL/Prisma adapter can throw when it receives an unexpected wire
-    // response for a missing row (e.g. "Cannot read properties of undefined
-    // (reading 'payload')"). Treat any DB error here as "no session" so a
-    // stale or cross-environment cookie doesn't crash every request.
-    console.warn("[auth] Session lookup failed (stale cookie or DB error); treating as unauthenticated.", err);
+  } catch (err: any) {
+    // Distinguish between expected 'no session' cases and genuine DB errors.
+    const msg = err?.message ?? String(err);
+    const isDbError = /ECONNREFUSED|ENOTFOUND|payload|wire|timeout/i.test(msg);
+    if (isDbError) {
+      console.error("[auth] CRITICAL DB ERROR during session lookup:", msg, err);
+    } else {
+      console.warn("[auth] Session lookup failed (stale cookie or transient error):", msg);
+    }
+    // Return null to mark user as unauthenticated, but do not crash the request.
     return null;
   }
 }

@@ -14,6 +14,21 @@ import geoip from "geoip-lite";
 import { buildAppUrl, getPublicOrigin, getRequestProtocol } from "./origin.js";
 import { pushUserWorkToCloud, pullUserWorkFromCloud, findAndPullRemoteUser } from "./sync.js";
 
+// Helper: await a promise but don't block forever — useful for sync ops.
+async function awaitWithTimeout<T>(p: Promise<T>, ms = 2500): Promise<T | null> {
+  let timer: NodeJS.Timeout | null = null;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<T | null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 // JSON object keys are always strings; we accept numeric-string keys like "1", "2", ...
 const NodeUrlsSchema = z.record(z.string().regex(/^\d+$/), z.string());
 const NodeCaptionsSchema = z.record(
@@ -1326,9 +1341,17 @@ export async function registerRoutes(app: FastifyInstance) {
 
         await createSessionAndSetCookie(reply, req as any, created.id);
         
-        // Background sync: Naturally Pull then Push for seamless experience.
-        pullUserWorkFromCloud(created.id).catch(err => console.warn("[Sync] Background Pull Error:", err));
-        pushUserWorkToCloud(created.id).catch(err => console.warn("[Sync] Background Push Error:", err));
+        // Attempt a short pull then push to synchronize accounts across devices.
+        try {
+          await awaitWithTimeout(pullUserWorkFromCloud(created.id), 3000);
+        } catch (err) {
+          console.warn("[Sync] Background Pull Error:", err);
+        }
+        try {
+          await awaitWithTimeout(pushUserWorkToCloud(created.id), 3000);
+        } catch (err) {
+          console.warn("[Sync] Background Push Error:", err);
+        }
         
         reply.code(201);
         return {
@@ -1390,9 +1413,17 @@ export async function registerRoutes(app: FastifyInstance) {
 
       await createSessionAndSetCookie(reply, req as any, user.id);
       
-      // Background sync: Naturally Pull then Push for seamless experience.
-      pullUserWorkFromCloud(user.id).catch(err => console.warn("[Sync] Background Pull Error:", err));
-      pushUserWorkToCloud(user.id).catch(err => console.warn("[Sync] Background Push Error:", err));
+      // Attempt a short pull then push to synchronize accounts across devices.
+      try {
+        await awaitWithTimeout(pullUserWorkFromCloud(user.id), 3000);
+      } catch (err) {
+        console.warn("[Sync] Background Pull Error:", err);
+      }
+      try {
+        await awaitWithTimeout(pushUserWorkToCloud(user.id), 3000);
+      } catch (err) {
+        console.warn("[Sync] Background Push Error:", err);
+      }
       return {
         user: {
           id: user.id,
@@ -1504,8 +1535,12 @@ export async function registerRoutes(app: FastifyInstance) {
           },
         });
         
-        // Background sync to cloud
-        void pushUserWorkToCloud(user.id);
+        // Try a short push to cloud to surface profile changes to other devices.
+        try {
+          await awaitWithTimeout(pushUserWorkToCloud(user.id), 2000);
+        } catch (err) {
+          console.warn("[Sync] Profile update push failed:", err);
+        }
         
         return { success: true };
       } catch (err: any) {
@@ -1550,8 +1585,12 @@ export async function registerRoutes(app: FastifyInstance) {
         data: { passwordHash: newHash },
       });
 
-      // Background sync to cloud
-      void pushUserWorkToCloud(user.id);
+      // Try a short push to cloud to propagate password change.
+      try {
+        await awaitWithTimeout(pushUserWorkToCloud(user.id), 2000);
+      } catch (err) {
+        console.warn("[Sync] Password update push failed:", err);
+      }
 
       return { success: true };
     }
@@ -1788,9 +1827,13 @@ export async function registerRoutes(app: FastifyInstance) {
         topic: req.body.topic ?? null,
       });
 
-      // Background push to cloud
+      // Attempt a short background push so newly-created shares become available across devices.
       if (user) {
-        pushUserWorkToCloud(user.id).catch(err => console.warn("[Sync] Share-create background push failed:", err.message));
+        try {
+          await awaitWithTimeout(pushUserWorkToCloud(user.id), 2000);
+        } catch (err) {
+          console.warn("[Sync] Share-create background push failed:", (err as any)?.message ?? err);
+        }
       }
 
       const baseUrl = getBaseUrl(req);
