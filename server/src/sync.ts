@@ -1,6 +1,7 @@
 import { getPrisma } from "./db.js";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { PrismaClient } from "@prisma/client";
+import { createClient } from "@libsql/client";
 
 let remotePrisma: PrismaClient | null = null;
 
@@ -13,8 +14,9 @@ function getRemotePrisma(): PrismaClient | null {
   if (!url || !authToken || process.env.VERCEL) return null;
   
   try {
-    const factory = new PrismaLibSql({ url, authToken });
-    remotePrisma = new PrismaClient({ adapter: factory as any });
+    const client = createClient({ url, authToken });
+    const adapter = new PrismaLibSql(client);
+    remotePrisma = new PrismaClient({ adapter: adapter as any });
     return remotePrisma;
   } catch (e: any) {
     console.error("[Sync] Failed to initialize remote Prisma:", e.message);
