@@ -1,3 +1,25 @@
+dist-desktop/
+win-unpacked/
+desktop/dist/
+build/
+*.exe
+*.blockmap
+*.zip
+
+# Large vendor or generated files that can be rebuilt in CI
+public/vendor/chart.umd.js
+
+# Local configs and secrets
+.env
+.env.local
+.vscode/
+
+# Node modules - install server-side
+node_modules/
+
+# Local bundles/temp
+bundles/
+tmp/
 # Exclude local build artifacts and heavy folders from Vercel deployments
 node_modules
 dist
