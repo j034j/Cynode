@@ -84,7 +84,7 @@ export async function pushUserWorkToCloud(userId: string) {
       });
     }
     console.log(`[Sync] Background push successful for user ${userId}`);
-  } catch (err) {
+  } catch (err: any) {
     console.warn(`[Sync] Background push failed:`, err.message);
   }
 }
@@ -152,7 +152,7 @@ export async function pullUserWorkFromCloud(userId: string) {
       });
     }
     console.log(`[Sync] Background pull successful for user ${userId}`);
-  } catch (err) {
+  } catch (err: any) {
     console.warn(`[Sync] Background pull failed:`, err.message);
   }
 }
@@ -207,7 +207,7 @@ export async function findAndPullRemoteUser(identifier: string): Promise<boolean
       console.log(`[Sync] Successfully pulled remote account for ${identifier}`);
       return true;
     }
-  } catch (err) {
+  } catch (err: any) {
     console.warn(`[Sync] Remote user lookup failed:`, err.message);
   }
   return false;
