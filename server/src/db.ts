@@ -30,9 +30,9 @@ export async function getPrisma(): Promise<PrismaClient> {
     
     try {
       if (isRemote && url && (url.startsWith("libsql://") || url.startsWith("https://"))) {
-        console.log("[db] Initializing LibSql Client & Adapter...");
-        const client = createClient({ url, authToken: tursoToken });
-        const adapter = new PrismaLibSql(client);
+        console.log("[db] Initializing LibSql Adapter...");
+        // Use adapter config directly to satisfy type expectations in TS build
+        const adapter = new PrismaLibSql({ url, authToken: tursoToken });
         prisma = new PrismaClient({ adapter });
       } else {
         console.log("[db] Initializing standard SQLite...");

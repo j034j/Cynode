@@ -15,8 +15,7 @@ function getRemotePrisma(): PrismaClient | null {
   if (!url || !authToken) return null;
   
   try {
-    const client = createClient({ url, authToken });
-    const adapter = new PrismaLibSql(client);
+    const adapter = new PrismaLibSql({ url, authToken });
     remotePrisma = new PrismaClient({ adapter: adapter as any });
     return remotePrisma;
   } catch (e: any) {
