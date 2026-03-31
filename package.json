@@ -8,9 +8,6 @@
     "type": "git",
     "url": "https://github.com/j034j/Cynode.git"
   },
-  "engines": {
-    "node": "20.x"
-  },
   "type": "module",
   "main": "desktop/main.cjs",
   "scripts": {
