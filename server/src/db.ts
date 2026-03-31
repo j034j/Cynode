@@ -7,23 +7,21 @@ let prisma: PrismaClient | null = null;
 export function getPrisma(): PrismaClient {
   if (!prisma) {
     const tursoUrl = process.env.TURSO_DATABASE_URL;
-    const localUrl = process.env.DATABASE_URL;
+    const tursoToken = process.env.TURSO_AUTH_TOKEN;
+    const localUrl = process.env.DATABASE_URL || "file:./dev.db";
     
-    // Determine if we should use the remote database (Turso)
-    // We use remote if:
-    // 1. We are running on Vercel (production) AND Turso URL is provided.
-    // 2. OR USE_REMOTE_DB=true is explicitly set.
-    const useRemote = (process.env.VERCEL && tursoUrl) || process.env.USE_REMOTE_DB === "true";
-    
-    const url = useRemote ? (tursoUrl || localUrl || "") : (localUrl || tursoUrl || "");
+    // Remote connection check
+    const isRemote = (process.env.VERCEL && tursoUrl) || process.env.USE_REMOTE_DB === "true";
+    const url = isRemote ? (tursoUrl || localUrl) : localUrl;
     
     if (url.startsWith("libsql://") || url.startsWith("https://")) {
-      console.log("[db] Initializing Prisma with LibSql adapter (Remote)");
-      const adapter = new PrismaLibSql({
-        url,
-        authToken: process.env.TURSO_AUTH_TOKEN,
-      });
-      prisma = new PrismaClient({ adapter });
+      console.log("[db] Initializing Prisma with LibSql Factory (Remote)");
+      const factory = new PrismaLibSql({ url, authToken: tursoToken });
+      
+      // Note: In Prisma 7, we must pass the factory or use it to connect. 
+      // Based on types, it implements SqlDriverAdapterFactory.
+      // We pass the factory directly to PrismaClient (it will handle connecting inside).
+      prisma = new PrismaClient({ adapter: factory as any });
     } else {
       console.log("[db] Initializing Prisma with default SQLite (Local)");
       prisma = new PrismaClient();

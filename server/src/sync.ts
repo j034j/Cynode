@@ -13,10 +13,11 @@ function getRemotePrisma(): PrismaClient | null {
   if (!url || !authToken || process.env.VERCEL) return null;
   
   try {
-    const adapter = new PrismaLibSql({ url, authToken });
-    remotePrisma = new PrismaClient({ adapter });
+    const factory = new PrismaLibSql({ url, authToken });
+    remotePrisma = new PrismaClient({ adapter: factory as any });
     return remotePrisma;
-  } catch (e) {
+  } catch (e: any) {
+    console.error("[Sync] Failed to initialize remote Prisma:", e.message);
     return null;
   }
 }
