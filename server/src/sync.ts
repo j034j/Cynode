@@ -1,5 +1,6 @@
 import { getPrisma } from "./db.js";
-import { PrismaLibSQL } from "@prisma/adapter-libsql";
+import * as AdapterLibSql from "@prisma/adapter-libsql";
+const PrismaLibSQL: any = (AdapterLibSql as any).PrismaLibSQL || (AdapterLibSql as any).PrismaLibSql;
 import { PrismaClient } from "@prisma/client";
 import { createClient } from "@libsql/client";
 

@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
-import { PrismaLibSQL } from "@prisma/adapter-libsql";
+import * as AdapterLibSql from "@prisma/adapter-libsql";
+const PrismaLibSQL: any = (AdapterLibSql as any).PrismaLibSQL || (AdapterLibSql as any).PrismaLibSql;
 import { createClient } from "@libsql/client";
 import path from "path";
 import { fileURLToPath } from "url";
