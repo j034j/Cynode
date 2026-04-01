@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { createClient } from '@libsql/client';
-import { PrismaLibSql } from '@prisma/adapter-libsql';
+import { PrismaLibSQL } from '@prisma/adapter-libsql';
 import { PrismaClient } from '@prisma/client';
 import { execSync } from 'child_process';
 
@@ -20,7 +20,7 @@ console.log('URL:', tursoUrl);
 process.env.LOCAL_DB_URL = 'file:./server/prisma/dev.db';
 
 // Create Prisma client with libsql adapter for the actual Turso connection
-const adapter = new PrismaLibSql({
+const adapter = new PrismaLibSQL({
   url: tursoUrl,
   authToken: tursoToken,
 });

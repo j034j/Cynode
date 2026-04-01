@@ -1,11 +1,11 @@
 import { PrismaClient } from "@prisma/client";
-import { PrismaLibSql } from "@prisma/adapter-libsql";
+import { PrismaLibSQL } from "@prisma/adapter-libsql";
 import { createClient } from "@libsql/client";
 
 const url = process.env.TURSO_DATABASE_URL || "";
 const authToken = process.env.TURSO_AUTH_TOKEN || "";
 
-const adapter = new PrismaLibSql({ url, authToken });
+const adapter = new PrismaLibSQL({ url, authToken });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {

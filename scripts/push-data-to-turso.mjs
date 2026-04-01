@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { createClient } from '@libsql/client';
-import { PrismaLibSql } from '@prisma/adapter-libsql';
+import { PrismaLibSQL } from '@prisma/adapter-libsql';
 import { PrismaClient } from '@prisma/client';
 
 const tursoUrl = process.env.TURSO_DATABASE_URL;
@@ -15,7 +15,7 @@ if (!tursoUrl || !tursoToken) {
 const localPrisma = new PrismaClient();
 
 // 2. Initialize Remote Prisma (Turso)
-const adapter = new PrismaLibSql({
+const adapter = new PrismaLibSQL({
   url: tursoUrl,
   authToken: tursoToken,
 });
