@@ -9,7 +9,7 @@
     "url": "https://github.com/j034j/Cynode.git"
   },
   "engines": {
-    "node": ">=24.x"
+    "node": "20.x"
   },
   "type": "module",
   "main": "desktop/main.cjs",
@@ -18,7 +18,7 @@
     "dev": "tsx watch server/src/index.ts",
     "start": "node server/dist/index.js",
     "start:prod": "node --enable-source-maps server/dist/index.js",
-    "build": "node scripts/sync-chartjs.mjs && prisma generate --schema server/prisma/schema.prisma && tsc -p server/tsconfig.json",
+    "build": "node scripts/sync-chartjs.mjs && prisma generate --schema server/prisma/schema.prisma && node --max-old-space-size=3072 ./node_modules/.bin/tsc -p server/tsconfig.json",
     "build:turso": "node scripts/sync-chartjs.mjs && prisma generate --schema server/prisma/schema.turso.prisma && tsc -p server/tsconfig.json",
     "desktop:prepare-assets": "node scripts/sync-desktop-assets.mjs",
     "desktop:dev": "node scripts/sync-desktop-assets.mjs && electron desktop/main.cjs",
