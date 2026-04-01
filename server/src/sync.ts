@@ -1,5 +1,5 @@
 import { getPrisma } from "./db.js";
-import { PrismaLibSql } from "@prisma/adapter-libsql";
+import { PrismaLibSQL } from "@prisma/adapter-libsql";
 import { PrismaClient } from "@prisma/client";
 import { createClient } from "@libsql/client";
 
@@ -15,7 +15,7 @@ function getRemotePrisma(): PrismaClient | null {
   if (!url || !authToken) return null;
   
   try {
-    const adapter = new PrismaLibSql({ url, authToken });
+    const adapter = new PrismaLibSQL({ url, authToken });
     remotePrisma = new PrismaClient({ adapter: adapter as any });
     return remotePrisma;
   } catch (e: any) {
