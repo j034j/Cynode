@@ -1,7 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import * as AdapterLibSql from "@prisma/adapter-libsql";
 const PrismaLibSQL: any = (AdapterLibSql as any).PrismaLibSQL || (AdapterLibSql as any).PrismaLibSql;
-import { createClient } from "@libsql/client";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -11,57 +10,94 @@ const __dirname = path.dirname(__filename);
 let prisma: PrismaClient | null = null;
 let initPromise: Promise<PrismaClient> | null = null;
 
+function defaultLocalDatabaseUrl(): string {
+  const defaultLocalPath = path.resolve(__dirname, "..", "prisma", "dev.db");
+  return `file:${defaultLocalPath}`;
+}
+
+function normalizeDatabaseUrl(rawUrl?: string | null): string {
+  const fallback = defaultLocalDatabaseUrl();
+  const input = typeof rawUrl === "string" && rawUrl.trim() ? rawUrl.trim() : fallback;
+  if (!input.startsWith("file:")) return input;
+
+  const filePath = input.slice(5);
+  if (!filePath) return fallback;
+  if (path.isAbsolute(filePath) || /^[A-Za-z]:[\\/]/.test(filePath)) return input;
+
+  const resolved = path.resolve(__dirname, "..", filePath);
+  return `file:${resolved}`;
+}
+
+export function isRemoteDatabaseUrl(rawUrl?: string | null): boolean {
+  if (!rawUrl) return false;
+  try {
+    const parsed = new URL(String(rawUrl));
+    return parsed.protocol === "libsql:" || parsed.protocol === "https:";
+  } catch (_) {
+    return false;
+  }
+}
+
+export function isDatabasePersistenceEnabled(): boolean {
+  const configuredDatabaseUrl = process.env.DATABASE_URL;
+  const tursoUrl = process.env.TURSO_DATABASE_URL;
+  return Boolean(configuredDatabaseUrl || tursoUrl);
+}
+
+export function resolveDatabaseConfig() {
+  const configuredDatabaseUrl = process.env.DATABASE_URL;
+  const tursoUrl = process.env.TURSO_DATABASE_URL;
+  const authToken = process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN || undefined;
+
+  const normalizedDatabaseUrl = normalizeDatabaseUrl(configuredDatabaseUrl);
+  const remoteUrl = tursoUrl || (isRemoteDatabaseUrl(configuredDatabaseUrl) ? configuredDatabaseUrl!.trim() : null);
+  const isRemote =
+    Boolean(remoteUrl) &&
+    (process.env.VERCEL === "1" ||
+      process.env.VERCEL === "true" ||
+      Boolean(process.env.VERCEL) ||
+      process.env.USE_REMOTE_DB === "true" ||
+      isRemoteDatabaseUrl(configuredDatabaseUrl));
+
+  return {
+    authToken,
+    isRemote,
+    localUrl: normalizedDatabaseUrl,
+    remoteUrl,
+    runtimeUrl: isRemote ? String(remoteUrl) : normalizedDatabaseUrl,
+  };
+}
+
 export async function getPrisma(): Promise<PrismaClient> {
   if (prisma) return prisma;
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-      const tursoUrl = process.env.TURSO_DATABASE_URL;
-      const tursoToken = process.env.TURSO_AUTH_TOKEN;
-      // Resolve default local SQLite DB relative to the built server directory so runtime
-      // paths work regardless of current working directory.
-      const defaultLocalPath = path.resolve(__dirname, "..", "prisma", "dev.db");
-      const localUrl = process.env.DATABASE_URL || `file:${defaultLocalPath}`;
-    
-    // Remote connection check
-    const isRemote = (process.env.VERCEL && tursoUrl) || process.env.USE_REMOTE_DB === "true";
-    // If DATABASE_URL is provided in env, prefer that. If it's a relative file: URL, resolve it
-    // relative to the built server directory so runtime paths work regardless of CWD.
-    let url = isRemote ? (tursoUrl || localUrl) : localUrl;
-    if (process.env.DATABASE_URL) {
-      url = process.env.DATABASE_URL;
-      if (url.startsWith("file:")) {
-        const filePath = url.slice(5);
-        if (!path.isAbsolute(filePath) && !/^[A-Za-z]:[\\/]/.test(filePath)) {
-          const resolved = path.resolve(__dirname, "..", filePath);
-          url = `file:${resolved}`;
-          console.log(`[db] Resolved relative DATABASE_URL to ${url}`);
-        }
-      }
-    }
+    const { authToken, isRemote, localUrl, remoteUrl, runtimeUrl } = resolveDatabaseConfig();
     // Ensure Prisma sees the resolved DATABASE_URL at runtime
     try {
-      process.env.DATABASE_URL = url;
+      process.env.DATABASE_URL = runtimeUrl;
     } catch (_) {}
-    
+
     console.log(`[db] Mode: ${isRemote ? "Remote (Turso)" : "Local (SQLite)"}`);
     console.log(`[db] VERCEL_ENV: ${!!process.env.VERCEL}`);
-    console.log(`[db] TURSO_URL_PRESENT: ${!!tursoUrl}`);
+    console.log(`[db] TURSO_URL_PRESENT: ${!!remoteUrl}`);
 
-    if (process.env.VERCEL && !tursoUrl) {
-      console.error("[db] FATAL: Running on Vercel but TURSO_DATABASE_URL is missing. Refusing to initialize remote DB.");
-      // Fail fast to avoid running with an unsupported local SQLite DB in serverless environment
-      throw new Error("TURSO_DATABASE_URL is required on Vercel deployments");
+    if ((process.env.VERCEL || process.env.USE_REMOTE_DB === "true") && !isRemote) {
+      console.error("[db] FATAL: Remote runtime detected but no remote database URL is configured.");
+      throw new Error("Remote database URL is required for this deployment");
     }
-    
+
     try {
-      if (isRemote && url && (url.startsWith("libsql://") || url.startsWith("https://"))) {
+      if (isRemote && remoteUrl && isRemoteDatabaseUrl(remoteUrl)) {
         console.log("[db] Initializing LibSql Adapter...");
-        // Use adapter config directly to satisfy type expectations in TS build
-        const adapter = new PrismaLibSQL({ url, authToken: tursoToken });
+        const adapter = new PrismaLibSQL({ url: remoteUrl, authToken });
         prisma = new PrismaClient({ adapter });
       } else {
         console.log("[db] Initializing standard SQLite...");
+        if (localUrl !== runtimeUrl) {
+          console.log(`[db] Resolved local DATABASE_URL to ${runtimeUrl}`);
+        }
         prisma = new PrismaClient();
       }
       return prisma;

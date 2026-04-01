@@ -183,7 +183,7 @@ function setupDeviceMode() {
 function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     // Best-effort; failures should not impact core UI.
-    navigator.serviceWorker.register('/sw.js?v=0326_qrfix').catch(() => { });
+    navigator.serviceWorker.register('/sw.js?v=0402_syncfix').catch(() => { });
 }
 
 function setPreviewPaneExpanded(expanded, options = {}) {
@@ -250,15 +250,305 @@ let pendingSaveTimer = null;
 const GRAPH_TOPIC_KEY = 'graphTopic';
 const GRAPH_TOPIC_ORIGIN_KEY = 'graphTopicOrigin'; 
 const LAST_ACTIVE_GRAPH_KEY_PREFIX = 'lastActiveGraph:v1:';
+const CACHED_ME_KEY = 'cynodeCachedMe:v1';
+const OFFLINE_USER_KEY = 'cynode_offline_user';
+const PENDING_GRAPH_SYNC_KEY_PREFIX = 'pendingGraphSync:v1:';
+const PENDING_SAVED_SYNC_KEY_PREFIX = 'pendingSavedSync:v1:';
 
 function getScopedKey(base) {
     const scope = currentUser && (currentUser.id || currentUser.handle) ? String(currentUser.id || currentUser.handle) : 'draft';
     return `${base}:${scope}`;
 }
 
+function getUserScopeId(user = currentUser) {
+    if (!user) return 'draft';
+    const raw = user.id || user.handle;
+    return raw ? String(raw) : 'draft';
+}
+
+function readJsonStorage(key, fallback = null) {
+    try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+    } catch (_) {
+        return fallback;
+    }
+}
+
+function writeJsonStorage(key, value) {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+function removeStorage(key) {
+    try { localStorage.removeItem(key); } catch (_) { }
+}
+
+function cloneSerializable(value) {
+    try {
+        return JSON.parse(JSON.stringify(value));
+    } catch (_) {
+        return value;
+    }
+}
+
+function buildPendingId(prefix = 'pending') {
+    return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getPendingGraphSyncStorageKey(user = currentUser) {
+    return `${PENDING_GRAPH_SYNC_KEY_PREFIX}${getUserScopeId(user)}`;
+}
+
+function getPendingSavedSyncStorageKey(user = currentUser) {
+    return `${PENDING_SAVED_SYNC_KEY_PREFIX}${getUserScopeId(user)}`;
+}
+
+function readCachedMe() {
+    return readJsonStorage(CACHED_ME_KEY, null);
+}
+
+function writeCachedMe(me) {
+    if (!me || typeof me !== 'object') return;
+    writeJsonStorage(CACHED_ME_KEY, me);
+}
+
+function getOfflineSessionUser() {
+    const explicit = readJsonStorage(OFFLINE_USER_KEY, null);
+    if (explicit && typeof explicit === 'object') return explicit;
+
+    const cached = readCachedMe();
+    if (cached && cached.user) {
+        return { ...cached.user, isOffline: true };
+    }
+    return null;
+}
+
+function setOfflineSessionUser(user) {
+    if (!user || typeof user !== 'object') return;
+    writeJsonStorage(OFFLINE_USER_KEY, user);
+}
+
+function clearCachedAuthState() {
+    removeStorage(OFFLINE_USER_KEY);
+    removeStorage(CACHED_ME_KEY);
+}
+
+function readPendingGraphSync(user = currentUser) {
+    return readJsonStorage(getPendingGraphSyncStorageKey(user), null);
+}
+
+function writePendingGraphSync(payload, user = currentUser) {
+    return writeJsonStorage(getPendingGraphSyncStorageKey(user), payload);
+}
+
+function clearPendingGraphSync(user = currentUser) {
+    removeStorage(getPendingGraphSyncStorageKey(user));
+}
+
+function readPendingSavedActions(user = currentUser) {
+    const items = readJsonStorage(getPendingSavedSyncStorageKey(user), []);
+    return Array.isArray(items) ? items : [];
+}
+
+function writePendingSavedActions(items, user = currentUser) {
+    return writeJsonStorage(getPendingSavedSyncStorageKey(user), Array.isArray(items) ? items : []);
+}
+
+function countPendingCloudSyncItems(user = currentUser) {
+    const savedCount = readPendingSavedActions(user).length;
+    const graphCount = readPendingGraphSync(user) ? 1 : 0;
+    return savedCount + graphCount;
+}
+
+function isOfflineCapableError(error) {
+    const msg = String(error && error.message ? error.message : error || '');
+    return /Failed to fetch|NetworkError|Load failed|offline|API 502|API 503|API 504|Database unavailable|Service Unavailable/i.test(msg);
+}
+
+function isOfflineCapableResponse(status, text = '') {
+    return status === 0 || status === 502 || status === 503 || status === 504 || /database unavailable|service unavailable/i.test(String(text || ''));
+}
+
+function queueGraphSnapshotForSync(snapshot, { graphIdOverride = graphId, user = currentUser } = {}) {
+    if (!snapshot || typeof snapshot !== 'object') return;
+    writePendingGraphSync({
+        graphId: graphIdOverride || null,
+        snapshot: cloneSerializable(snapshot),
+        updatedAt: new Date().toISOString(),
+    }, user);
+}
+
+function queuePendingSavedCreate({ snapshot, organizationId, topic, user = currentUser } = {}) {
+    const actions = readPendingSavedActions(user);
+    const queued = {
+        id: buildPendingId('saved'),
+        type: 'create',
+        placeholderCode: buildPendingId('offline'),
+        snapshot: cloneSerializable(snapshot),
+        organizationId: organizationId || null,
+        topic: topic || null,
+        queuedAt: new Date().toISOString(),
+    };
+    actions.unshift(queued);
+    writePendingSavedActions(actions, user);
+    return queued;
+}
+
+function queuePendingSavedUpdate({ code, snapshot, topic, user = currentUser } = {}) {
+    const normalizedCode = String(code || '').trim();
+    const actions = readPendingSavedActions(user);
+
+    if (normalizedCode.startsWith('offline_')) {
+        const existingCreate = actions.find((item) => item && item.type === 'create' && item.placeholderCode === normalizedCode);
+        if (existingCreate) {
+            existingCreate.snapshot = cloneSerializable(snapshot);
+            existingCreate.topic = topic || null;
+            existingCreate.updatedAt = new Date().toISOString();
+            writePendingSavedActions(actions, user);
+            return existingCreate;
+        }
+        return queuePendingSavedCreate({ snapshot, topic, user });
+    }
+
+    const existingUpdate = actions.find((item) => item && item.type === 'update' && item.code === normalizedCode);
+    if (existingUpdate) {
+        existingUpdate.snapshot = cloneSerializable(snapshot);
+        existingUpdate.topic = topic || null;
+        existingUpdate.updatedAt = new Date().toISOString();
+        writePendingSavedActions(actions, user);
+        return existingUpdate;
+    }
+
+    const queued = {
+        id: buildPendingId('saved'),
+        type: 'update',
+        code: normalizedCode,
+        snapshot: cloneSerializable(snapshot),
+        topic: topic || null,
+        queuedAt: new Date().toISOString(),
+    };
+    actions.unshift(queued);
+    writePendingSavedActions(actions, user);
+    return queued;
+}
+
+function updateAccountProfileCard() {
+    const card = document.getElementById('accountProfileCard');
+    const nameEl = document.getElementById('accountProfileName');
+    const handleEl = document.getElementById('accountProfileHandle');
+    const emailEl = document.getElementById('accountProfileEmail');
+    const stateEl = document.getElementById('accountProfileState');
+
+    if (!card || !nameEl || !handleEl || !emailEl || !stateEl) return;
+
+    if (!currentUser) {
+        card.style.display = 'none';
+        nameEl.textContent = '';
+        handleEl.textContent = '';
+        emailEl.textContent = '';
+        stateEl.textContent = '';
+        return;
+    }
+
+    const pendingCount = countPendingCloudSyncItems(currentUser);
+    const isOfflineSession = !!currentUser.isOffline;
+    const isDesktop = !!getDesktopBridge();
+
+    card.style.display = '';
+    nameEl.textContent = currentUser.displayName || currentUser.handle || 'Cynode user';
+    handleEl.textContent = currentUser.handle ? `@${currentUser.handle}` : 'Signed in';
+    emailEl.textContent = currentUser.email || (isOfflineSession ? 'Offline session profile cached on this device' : 'Email available in Manage Account');
+
+    if (isOfflineSession && pendingCount > 0) {
+        stateEl.textContent = `${pendingCount} queued change${pendingCount === 1 ? '' : 's'} will sync when Cynode reconnects.`;
+    } else if (isOfflineSession) {
+        stateEl.textContent = 'Offline mode active. Local changes stay available here and sync when the backend is reachable again.';
+    } else if (pendingCount > 0) {
+        stateEl.textContent = `${pendingCount} queued change${pendingCount === 1 ? '' : 's'} waiting for cloud sync.`;
+    } else if (isDesktop) {
+        stateEl.textContent = 'Desktop account session is ready. Manage Account and saved work stay aligned with the web app.';
+    } else {
+        stateEl.textContent = 'Account connected. Saved graphs and profile changes sync through the same Cynode backend.';
+    }
+}
+
+async function maybeHandleOfflineApiFallback(path, init = {}, detail = {}) {
+    const method = String(init.method || 'GET').toUpperCase();
+    const status = Number(detail.status || 0);
+    const text = String(detail.text || detail.message || '');
+    const offlineLike = !navigator.onLine || isOfflineCapableResponse(status, text) || isOfflineCapableError(detail.error || text);
+    if (!offlineLike) return null;
+
+    let bodyJson = {};
+    try {
+        if (typeof init.body === 'string' && init.body) bodyJson = JSON.parse(init.body);
+    } catch (_) { }
+
+    if (path.includes('/api/v1/me')) {
+        const offlineUser = getOfflineSessionUser();
+        if (offlineUser) {
+            return {
+                user: { ...offlineUser, isOffline: true },
+                userPlan: null,
+                organizations: [],
+                offline: true,
+            };
+        }
+        return null;
+    }
+
+    if (path.includes('/api/v1/auth/login') || path.includes('/api/v1/auth/register')) {
+        const cached = readCachedMe();
+        const cachedUser = cached && cached.user ? cached.user : null;
+        const ident = String(bodyJson.identifier || bodyJson.email || bodyJson.handle || '').trim().toLowerCase();
+        let offlineUser = null;
+
+        if (cachedUser) {
+            const handle = String(cachedUser.handle || '').trim().toLowerCase();
+            const email = String(cachedUser.email || '').trim().toLowerCase();
+            if (!ident || ident === handle || (email && ident === email)) {
+                offlineUser = { ...cachedUser, isOffline: true };
+            }
+        }
+
+        if (!offlineUser) {
+            const fallbackHandle = bodyJson.handle || bodyJson.identifier || (bodyJson.email ? String(bodyJson.email).split('@')[0] : 'offline_user');
+            offlineUser = {
+                id: `offline_${Date.now()}`,
+                handle: String(fallbackHandle || 'offline_user'),
+                displayName: bodyJson.displayName || null,
+                email: bodyJson.email || null,
+                isOffline: true,
+                isLocalOnly: true,
+            };
+        }
+
+        setOfflineSessionUser(offlineUser);
+        return { success: true, user: offlineUser, offline: true };
+    }
+
+    if (path.includes('/api/v1/logout')) {
+        clearCachedAuthState();
+        return { success: true, offline: true };
+    }
+
+    if (path.includes('/api/v1/saved') && method === 'GET') {
+        return [];
+    }
+
+    return null;
+}
+
 let graphTopic = '';
 let graphTopicOrigin = null;
 let pendingLastActiveGraphRestore = null;
+let pendingCloudSyncInFlight = false;
+let refreshSavedLinksFn = null;
 
 // Playback media state
 
@@ -956,40 +1246,31 @@ async function apiJson(path, options) {
     try {
         res = await fetch(fullPath, init);
     } catch (e) {
-        if (!navigator.onLine || e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
-            if (path.includes('/api/v1/auth/login') || path.includes('/api/v1/auth/register')) {
-                const bodyJson = init.body ? JSON.parse(init.body) : {};
-                const handle = bodyJson.handle || bodyJson.identifier || (bodyJson.email ? bodyJson.email.split('@')[0] : 'offline_user');
-                const user = { id: 'offline_' + Date.now(), handle: handle, isOffline: true };
-                try { localStorage.setItem('cynode_offline_user', JSON.stringify(user)); } catch (_) {}
-                return { success: true, user };
-            }
-            if (path.includes('/api/v1/me')) {
-                try {
-                    const offUserStr = localStorage.getItem('cynode_offline_user');
-                    if (offUserStr) return { user: JSON.parse(offUserStr) };
-                } catch (_) {}
-                throw new Error("Offline and not logged in locally");
-            }
-            if (path.includes('/api/v1/logout')) {
-                try { localStorage.removeItem('cynode_offline_user'); } catch (_) {}
-                return { success: true };
-            }
-            if (path.includes('/api/v1/saved') && (!init.method || init.method === 'GET')) {
-                return []; // Mock empty saved list if offline
-            }
-            if (path.includes('/api/v1/saved') && (init.method === 'POST' || init.method === 'PUT')) {
-                return { code: 'offline_' + Date.now().toString(36), shareUrl: window.location.origin + '/s/offline' };
-            }
-        }
+        const fallback = await maybeHandleOfflineApiFallback(path, init, { error: e });
+        if (fallback !== null) return fallback;
         throw e;
     }
 
     if (!res.ok) {
         const text = await res.text().catch(() => '');
+        const fallback = await maybeHandleOfflineApiFallback(path, init, { status: res.status, text });
+        if (fallback !== null) return fallback;
         throw new Error(`API ${res.status} ${res.statusText}${text ? `: ${text}` : ''}`);
     }
-    return res.json();
+    const json = await res.json();
+
+    if (path.includes('/api/v1/me')) {
+        if (json && json.user) {
+            writeCachedMe(json);
+            setOfflineSessionUser(json.user);
+        } else {
+            clearCachedAuthState();
+        }
+    } else if (path.includes('/api/v1/logout')) {
+        clearCachedAuthState();
+    }
+
+    return json;
 }
 
 async function apiUpload(path, formData) {
@@ -1203,6 +1484,181 @@ async function uploadSavedMedia(code, exportSnapshot) {
     if (Object.keys(filesByNode).length > 0) {
         remoteMedia.filesByNode = { ...(remoteMedia.filesByNode || {}), ...filesByNode };
     }
+}
+
+function buildSavedPayload(exportSnapshot, extras = {}) {
+    return {
+        nodeCount: exportSnapshot.nodeCount,
+        lastSelectedNode: exportSnapshot.lastSelectedNode,
+        nodeUrls: exportSnapshot.nodeUrls,
+        nodeCaptions: exportSnapshot.nodeCaptions,
+        nodePauseSecByNode: exportSnapshot.nodePauseSecByNode,
+        ...extras,
+    };
+}
+
+async function saveNodegraphToAccount(exportSnapshot, { organizationId, topic } = {}) {
+    try {
+        const response = await apiJson('/api/v1/saved', {
+            method: 'POST',
+            body: JSON.stringify(buildSavedPayload(exportSnapshot, {
+                organizationId,
+                topic: topic || undefined,
+            })),
+        });
+        clearPendingGraphSync(currentUser);
+        return { queued: false, ...response };
+    } catch (error) {
+        if (!isOfflineCapableError(error)) throw error;
+        const queued = queuePendingSavedCreate({ snapshot: exportSnapshot, organizationId, topic });
+        queueGraphSnapshotForSync(buildSavedPayload(exportSnapshot), { user: currentUser });
+        updateAccountProfileCard();
+        return {
+            queued: true,
+            code: queued.placeholderCode,
+            shareUrl: null,
+            message: 'Saved offline. Cynode will publish it to your account after reconnect.',
+        };
+    }
+}
+
+async function updateSavedNodegraphInAccount(code, exportSnapshot, { topic } = {}) {
+    try {
+        const response = await apiJson(`/api/v1/saved/${encodeURIComponent(code)}`, {
+            method: 'PUT',
+            body: JSON.stringify(buildSavedPayload(exportSnapshot, {
+                topic: topic || undefined,
+            })),
+        });
+        return { queued: false, ...response };
+    } catch (error) {
+        if (!isOfflineCapableError(error)) throw error;
+        const queued = queuePendingSavedUpdate({ code, snapshot: exportSnapshot, topic });
+        queueGraphSnapshotForSync(buildSavedPayload(exportSnapshot), { user: currentUser });
+        updateAccountProfileCard();
+        return {
+            queued: true,
+            code: queued.placeholderCode || queued.code || code,
+            shareUrl: null,
+            message: String(code || '').startsWith('offline_')
+                ? 'Saved offline draft updated. Cynode will sync it after reconnect.'
+                : 'Saved changes queued offline. Cynode will update the cloud version after reconnect.',
+        };
+    }
+}
+
+async function processPendingCloudSync() {
+    if (pendingCloudSyncInFlight || !navigator.onLine) {
+        updateAccountProfileCard();
+        return false;
+    }
+
+    const syncUser = currentUser || getOfflineSessionUser();
+    if (!syncUser) {
+        updateAccountProfileCard();
+        return false;
+    }
+
+    pendingCloudSyncInFlight = true;
+    let changed = false;
+
+    try {
+        const pendingGraph = readPendingGraphSync(syncUser);
+        if (pendingGraph && pendingGraph.snapshot) {
+            const graphSnapshot = cloneSerializable(pendingGraph.snapshot);
+            let savedGraphId = pendingGraph.graphId || graphId || null;
+            if (!savedGraphId) {
+                try { savedGraphId = localStorage.getItem(getScopedKey('graphId')); } catch (_) { }
+            }
+            try {
+                if (savedGraphId) {
+                    await apiJson(`/api/v1/graphs/${savedGraphId}`, {
+                        method: 'PUT',
+                        body: JSON.stringify(graphSnapshot),
+                    });
+                    graphId = savedGraphId;
+                } else {
+                    const created = await apiJson('/api/v1/graphs', {
+                        method: 'POST',
+                        body: JSON.stringify(graphSnapshot),
+                    });
+                    if (created && created.id) {
+                        graphId = created.id;
+                        localStorage.setItem(getScopedKey('graphId'), graphId);
+                    }
+                }
+                clearPendingGraphSync(syncUser);
+                changed = true;
+            } catch (error) {
+                if (!isOfflineCapableError(error)) {
+                    console.warn('[SyncQueue] Graph sync failed:', error);
+                }
+            }
+        }
+
+        const queuedActions = readPendingSavedActions(syncUser);
+        if (queuedActions.length > 0) {
+            const remaining = [];
+
+            for (let i = 0; i < queuedActions.length; i++) {
+                const action = queuedActions[i];
+                try {
+                    if (action.type === 'create') {
+                        const response = await apiJson('/api/v1/saved', {
+                            method: 'POST',
+                            body: JSON.stringify(buildSavedPayload(action.snapshot, {
+                                organizationId: action.organizationId || undefined,
+                                topic: action.topic || undefined,
+                            })),
+                        });
+                        if (response && response.code) {
+                            try { await uploadSavedMedia(response.code, action.snapshot); } catch (_) { }
+                            if (currentSavedShareCode === action.placeholderCode) {
+                                currentSavedShareCode = response.code;
+                                currentSavedShareUrl = response.shareUrl || createSavedGraphUrl(response.code);
+                                graphTopicOrigin = `saved:${response.code}`;
+                                writeLastActiveGraphForUser(response.code, { origin: 'saved', shareUrl: currentSavedShareUrl, user: syncUser });
+                                updateUpdateSavedButton();
+                            }
+                            changed = true;
+                            continue;
+                        }
+                    } else if (action.type === 'update' && action.code) {
+                        const response = await apiJson(`/api/v1/saved/${encodeURIComponent(action.code)}`, {
+                            method: 'PUT',
+                            body: JSON.stringify(buildSavedPayload(action.snapshot, {
+                                topic: action.topic || undefined,
+                            })),
+                        });
+                        try { await uploadSavedMedia(action.code, action.snapshot); } catch (_) { }
+                        if (response && response.shareUrl && currentSavedShareCode === action.code) {
+                            currentSavedShareUrl = response.shareUrl;
+                            writeLastActiveGraphForUser(action.code, { origin: 'saved', shareUrl: currentSavedShareUrl, user: syncUser });
+                        }
+                        changed = true;
+                        continue;
+                    }
+                } catch (error) {
+                    if (!isOfflineCapableError(error)) {
+                        console.warn('[SyncQueue] Saved item sync failed:', error);
+                    }
+                }
+
+                remaining.push(action);
+            }
+
+            writePendingSavedActions(remaining, syncUser);
+        }
+    } finally {
+        pendingCloudSyncInFlight = false;
+        updateAccountProfileCard();
+    }
+
+    if (changed && typeof refreshSavedLinksFn === 'function') {
+        try { await refreshSavedLinksFn(); } catch (_) { }
+    }
+
+    return changed;
 }
 
 function setGraphTopicFromInput(value) {
@@ -2216,26 +2672,33 @@ function scheduleApiSave({ flush = false } = {}) {
     }
 
     const doSave = async () => {
+        const snapshot = {
+            nodeCount: currentNodeCount,
+            lastSelectedNode: lastSelectedNode,
+            nodeUrls: nodeUrls,
+            nodeCaptions: nodeCaptions,
+            nodePauseSecByNode: nodeExtraDelaySecByNode,
+        };
         const id = await ensureGraphId();
         if (!id) {
+            queueGraphSnapshotForSync(snapshot, { user: currentUser });
             saveNodeDataLegacy();
+            updateAccountProfileCard();
             return;
         }
         try {
             await apiJson(`/api/v1/graphs/${id}`, {
                 method: 'PUT',
-                body: JSON.stringify({
-                    nodeCount: currentNodeCount,
-                    lastSelectedNode: lastSelectedNode,
-                    nodeUrls: nodeUrls,
-                    nodeCaptions: nodeCaptions,
-                    nodePauseSecByNode: nodeExtraDelaySecByNode,
-                }),
+                body: JSON.stringify(snapshot),
                 keepalive: flush === true,
             });
+            clearPendingGraphSync(currentUser);
+            updateAccountProfileCard();
         } catch (e) {
             console.warn('Backend save failed; keeping localStorage as fallback.', e);
+            queueGraphSnapshotForSync(snapshot, { graphIdOverride: id, user: currentUser });
             saveNodeDataLegacy();
+            updateAccountProfileCard();
         }
     };
 
@@ -4154,7 +4617,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (_) {
             renderSavedLinks([]);
         }
+        updateAccountProfileCard();
     }
+    refreshSavedLinksFn = refreshSavedLinks;
 
     // Auth UI (optional)
     try {
@@ -4166,7 +4631,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             : null;
         const orgs = me && Array.isArray(me.organizations) ? me.organizations : [];
         if (user) {
-            if (authStatus) authStatus.textContent = `Signed in as ${user.handle}`;
+            if (authStatus) authStatus.textContent = me && me.offline ? `Offline mode for ${user.handle}` : `Signed in as ${user.handle}`;
             if (signOutBtn) signOutBtn.style.display = '';
             if (signInBtn) signInBtn.style.display = 'none';
             if (authForm) authForm.style.display = 'none';
@@ -4202,6 +4667,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             await refreshBilling(orgs);
             await refreshDashboard(user, orgs);
             await refreshSavedLinks();
+            updateAccountProfileCard();
+            if (!me || !me.offline) {
+                void processPendingCloudSync();
+            }
         } else {
             currentUser = null;
             pendingLastActiveGraphRestore = null;
@@ -4215,6 +4684,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (dashboardSection) dashboardSection.style.display = 'none';
             const manageAccountLink = document.getElementById('manageAccountLink');
             if (manageAccountLink) manageAccountLink.style.display = 'none';
+            updateAccountProfileCard();
         }
     } catch (e) {
         currentUser = null;
@@ -4229,6 +4699,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (dashboardSection) dashboardSection.style.display = 'none';
         const manageAccountLink = document.getElementById('manageAccountLink');
         if (manageAccountLink) manageAccountLink.style.display = 'none';
+        updateAccountProfileCard();
     }
 
     signInBtn?.addEventListener('click', () => {
@@ -4248,6 +4719,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         graphTopicOrigin = null;
         graphTopic = '';
         currentSavedShareCode = null;
+        clearCachedAuthState();
         
         window.location.reload();
     });
@@ -4294,6 +4766,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             showAuthError('Sign up failed. That handle/email may already be taken.');
             console.warn('Sign up failed', e);
         }
+    });
+
+    window.addEventListener('online', () => {
+        void processPendingCloudSync();
     });
 
 
@@ -4498,18 +4974,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             if (!confirmNormalizedExport('Saving this nodegraph', exportSnapshot)) return;
             const organizationId = saveAsSelect && saveAsSelect.value ? saveAsSelect.value : undefined;
-            const res = await apiJson('/api/v1/saved', {
-                method: 'POST',
-                body: JSON.stringify({
-                    nodeCount: exportSnapshot.nodeCount,
-                    lastSelectedNode: exportSnapshot.lastSelectedNode,
-                    nodeUrls: exportSnapshot.nodeUrls,
-                    nodeCaptions: exportSnapshot.nodeCaptions,
-                    nodePauseSecByNode: exportSnapshot.nodePauseSecByNode,
-                    organizationId,
-                    topic: graphTopic || undefined,
-                }),
+            const res = await saveNodegraphToAccount(exportSnapshot, {
+                organizationId,
+                topic: graphTopic || undefined,
             });
+            if (res && res.queued) {
+                graphTopicOrigin = `saved:${res.code}`;
+                currentSavedShareCode = res.code;
+                currentSavedShareUrl = null;
+                writeLastActiveGraphForUser(res.code, { origin: 'saved', shareUrl: null });
+                updateUpdateSavedButton();
+                updateAccountProfileCard();
+                alert(res.message || 'Saved offline. Cynode will sync it when the backend is reachable again.');
+                return;
+            }
             if (res && res.shareUrl) {
                 // Bind the current topic to this saved code so deleting it can clear the topic display.
                 if (res.code && typeof res.code === 'string') {
@@ -4549,17 +5027,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
             if (!confirmNormalizedExport('Updating this saved nodegraph', exportSnapshot)) return;
-            const res = await apiJson(`/api/v1/saved/${encodeURIComponent(currentSavedShareCode)}`, {
-                method: 'PUT',
-                body: JSON.stringify({
-                    nodeCount: exportSnapshot.nodeCount,
-                    lastSelectedNode: exportSnapshot.lastSelectedNode,
-                    nodeUrls: exportSnapshot.nodeUrls,
-                    nodeCaptions: exportSnapshot.nodeCaptions,
-                    nodePauseSecByNode: exportSnapshot.nodePauseSecByNode,
-                    topic: graphTopic || undefined,
-                }),
+            const res = await updateSavedNodegraphInAccount(currentSavedShareCode, exportSnapshot, {
+                topic: graphTopic || undefined,
             });
+            if (res && res.queued) {
+                if (res.code && String(res.code).startsWith('offline_')) {
+                    currentSavedShareCode = res.code;
+                    graphTopicOrigin = `saved:${res.code}`;
+                    updateUpdateSavedButton();
+                }
+                updateAccountProfileCard();
+                alert(res.message || 'Saved changes queued offline. Cynode will sync them when the backend is reachable again.');
+                return;
+            }
             if (res && res.shareUrl) currentSavedShareUrl = res.shareUrl;
             writeLastActiveGraphForUser(currentSavedShareCode, { origin: 'saved', shareUrl: currentSavedShareUrl });
             try { await uploadSavedMedia(currentSavedShareCode, exportSnapshot); } catch (_) { }

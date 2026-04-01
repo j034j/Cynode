@@ -2,13 +2,41 @@
  * Cynode Account Management
  */
 
+const CACHED_ME_KEY = 'cynodeCachedMe:v1';
+
+function readCachedMe() {
+    try {
+        const raw = localStorage.getItem(CACHED_ME_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch (_) {
+        return null;
+    }
+}
+
 async function apiJson(url, options = {}) {
-    const res = await fetch(url, options);
+    let res;
+    try {
+        res = await fetch(url, options);
+    } catch (error) {
+        if (url.includes('/api/v1/me')) {
+            const cached = readCachedMe();
+            if (cached) return { ...cached, offline: true };
+        }
+        throw error;
+    }
     if (!res.ok) {
+        if ((res.status === 502 || res.status === 503 || res.status === 504) && url.includes('/api/v1/me')) {
+            const cached = readCachedMe();
+            if (cached) return { ...cached, offline: true };
+        }
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `API ${res.status} ${res.statusText}`);
     }
-    return res.json();
+    const json = await res.json();
+    if (url.includes('/api/v1/me') && json && json.user) {
+        try { localStorage.setItem(CACHED_ME_KEY, JSON.stringify(json)); } catch (_) {}
+    }
+    return json;
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -35,6 +63,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         viewId.textContent = me.user.id;
         emailInput.value = me.user.email || '';
         nameInput.value = me.user.displayName || '';
+        if (me.offline) {
+            profileStatus.className = 'status-msg status-success';
+            profileStatus.textContent = 'Offline profile view loaded from this device. Reconnect Cynode to edit account details.';
+            emailInput.disabled = true;
+            nameInput.disabled = true;
+            document.getElementById('saveProfileBtn').disabled = true;
+            document.getElementById('currentPassword').disabled = true;
+            document.getElementById('newPassword').disabled = true;
+            document.getElementById('confirmPassword').disabled = true;
+            document.getElementById('savePasswordBtn').disabled = true;
+        }
 
     } catch (e) {
         window.location.href = '/';

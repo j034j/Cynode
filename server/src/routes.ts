@@ -1319,6 +1319,7 @@ export async function registerRoutes(app: FastifyInstance) {
               handle: z.string(),
               displayName: z.string().nullable(),
               avatarUrl: z.string().nullable(),
+              email: z.string().nullable(),
             }),
           }),
           409: z.object({ error: z.literal("already_exists") }),
@@ -1360,6 +1361,7 @@ export async function registerRoutes(app: FastifyInstance) {
             handle: created.handle,
             displayName: created.displayName ?? null,
             avatarUrl: created.avatarUrl ?? null,
+            email: created.email ?? null,
           },
         };
       } catch (err: any) {
@@ -1383,6 +1385,7 @@ export async function registerRoutes(app: FastifyInstance) {
               handle: z.string(),
               displayName: z.string().nullable(),
               avatarUrl: z.string().nullable(),
+              email: z.string().nullable(),
             }),
           }),
           401: z.object({ error: z.literal("invalid_credentials") }),
@@ -1430,6 +1433,7 @@ export async function registerRoutes(app: FastifyInstance) {
           handle: user.handle,
           displayName: user.displayName ?? null,
           avatarUrl: user.avatarUrl ?? null,
+          email: user.email ?? null,
         },
       };
     },
@@ -1447,6 +1451,7 @@ export async function registerRoutes(app: FastifyInstance) {
                 handle: z.string(),
                 displayName: z.string().nullable(),
                 avatarUrl: z.string().nullable(),
+                email: z.string().nullable(),
               })
               .nullable(),
             userPlan: z

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { Prisma } from "@prisma/client";
-import { getPrisma } from "./db.js";
+import { getPrisma, isDatabasePersistenceEnabled } from "./db.js";
 import { pushUserWorkToCloud } from "./sync.js";
 
 export type GraphState = {
@@ -25,8 +25,7 @@ function randomShareCode(length = 8): string {
 }
 
 function isDbEnabled(): boolean {
-  // Read at call-time so `.env` loading order can't accidentally disable DB usage.
-  return Boolean(process.env.DATABASE_URL);
+  return isDatabasePersistenceEnabled();
 }
 
 export async function createGraph(

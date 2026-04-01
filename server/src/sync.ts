@@ -2,15 +2,25 @@ import { getPrisma } from "./db.js";
 import * as AdapterLibSql from "@prisma/adapter-libsql";
 const PrismaLibSQL: any = (AdapterLibSql as any).PrismaLibSQL || (AdapterLibSql as any).PrismaLibSql;
 import { PrismaClient } from "@prisma/client";
-import { createClient } from "@libsql/client";
 
 let remotePrisma: PrismaClient | null = null;
+
+function isRemoteDatabaseUrl(rawUrl?: string | null): boolean {
+  if (!rawUrl) return false;
+  try {
+    const parsed = new URL(String(rawUrl));
+    return parsed.protocol === "libsql:" || parsed.protocol === "https:";
+  } catch (_) {
+    return false;
+  }
+}
 
 function getRemotePrisma(): PrismaClient | null {
   if (remotePrisma) return remotePrisma;
   
-  const url = process.env.TURSO_DATABASE_URL;
-  const authToken = process.env.TURSO_AUTH_TOKEN;
+  const configuredUrl = process.env.DATABASE_URL;
+  const url = process.env.TURSO_DATABASE_URL || (isRemoteDatabaseUrl(configuredUrl) ? configuredUrl : undefined);
+  const authToken = process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN;
 
   // Allow remote Prisma initialization on Vercel as long as the TURSO envs are present.
   if (!url || !authToken) return null;
