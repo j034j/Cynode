@@ -804,7 +804,7 @@ function setupSidepanel() {
         }
     };
 
-    const setCollapsed = (collapsed, options = {}) => {
+    let setCollapsed = (collapsed, options = {}) => {
         sidepanel.classList.toggle('collapsed', !!collapsed);
         if (options.persist !== false) {
             localStorage.setItem(SIDEPANEL_COLLAPSED_KEY, collapsed ? '1' : '0');
