@@ -5,13 +5,16 @@ const CACHE = "cynode-v9";
 // We store and retrieve by a canonical key (origin + pathname, no search).
 const ASSET_PATHS = [
   "/",
+  "/account",
   "/pricing",
   "/desktop",
   "/analytics",
+  "/account.html",
   "/index.html",
   "/desktop.html",
   "/analytics.html",
   "/pricing.html",
+  "/account.js",
   "/styles.css",
   "/qrcode-node.js",
   "/script.js",

@@ -1505,8 +1505,9 @@ export async function registerRoutes(app: FastifyInstance) {
   );
 
   const ProfileUpdateSchema = z.object({
-    displayName: z.string().min(2).max(100).optional(),
-    email: z.string().email().max(255).optional(),
+    displayName: z.union([z.string().min(2).max(100), z.null()]).optional(),
+    email: z.union([z.string().email().max(255), z.null()]).optional(),
+    avatarUrl: z.union([z.string().url().max(2048), z.null()]).optional(),
   });
 
   const PasswordUpdateSchema = z.object({
@@ -1537,6 +1538,7 @@ export async function registerRoutes(app: FastifyInstance) {
           data: {
             displayName: req.body.displayName,
             email: req.body.email,
+            avatarUrl: req.body.avatarUrl,
           },
         });
         

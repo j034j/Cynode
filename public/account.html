@@ -3,39 +3,138 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Manage Account | Cynode</title>
+  <title>User Profile | Cynode</title>
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
   <style>
     .account-container {
-      max-width: 800px;
+      max-width: 1040px;
       margin: 40px auto;
       padding: 0 20px;
     }
     .account-header {
       margin-bottom: 30px;
-      display: flex;
+    }
+    .account-kicker {
+      display: inline-flex;
       align-items: center;
-      gap: 15px;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
     .account-header h1 {
-      margin: 0;
-      font-size: 24px;
-      font-weight: 800;
+      margin: 14px 0 10px;
+      font-size: 34px;
+      line-height: 1.1;
       color: var(--text);
     }
+    .account-header p {
+      margin: 0;
+      max-width: 720px;
+      font-size: 15px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+    .hero-card {
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr);
+      gap: 24px;
+      align-items: center;
+      background:
+        radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 12%, transparent), transparent 48%),
+        linear-gradient(145deg, color-mix(in srgb, var(--card-bg) 88%, white 12%), color-mix(in srgb, var(--card-bg) 96%, transparent));
+    }
+    .hero-avatar {
+      width: 120px;
+      height: 120px;
+      border-radius: 28px;
+      border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--card-border));
+      background: color-mix(in srgb, var(--accent) 8%, var(--app-bg));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      color: color-mix(in srgb, var(--accent) 82%, black 18%);
+    }
+    .hero-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .hero-avatar-fallback {
+      font-size: 48px;
+    }
+    .hero-meta {
+      min-width: 0;
+    }
+    .hero-name {
+      font-size: 30px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1.1;
+      word-break: break-word;
+    }
+    .hero-handle {
+      margin-top: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--accent);
+      word-break: break-word;
+    }
+    .hero-email {
+      margin-top: 10px;
+      color: var(--muted);
+      word-break: break-word;
+    }
+    .hero-status {
+      margin-top: 16px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+      color: var(--text);
+    }
+    .hero-actions {
+      margin-top: 18px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .hero-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .hero-link:hover {
+      text-decoration: underline;
+    }
     .back-link {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        color: var(--accent);
-        text-decoration: none;
-        font-size: 14px;
-        font-weight: 700;
-        margin-bottom: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 20px;
     }
     .back-link:hover {
-        text-decoration: underline;
+      text-decoration: underline;
     }
     .settings-card {
       background: var(--card-bg);
@@ -53,6 +152,11 @@
       align-items: center;
       gap: 10px;
       color: var(--text);
+    }
+    .account-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 24px;
     }
     .form-group {
       margin-bottom: 20px;
@@ -81,8 +185,8 @@
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
     }
     .form-input:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
+      opacity: 0.6;
+      cursor: not-allowed;
     }
     .save-btn {
       background: var(--accent);
@@ -102,47 +206,112 @@
       transform: scale(0.98);
     }
     .save-btn:disabled {
-        opacity: 0.5;
-        cursor: default;
+      opacity: 0.5;
+      cursor: default;
+    }
+    .save-btn.secondary {
+      background: color-mix(in srgb, var(--card-bg) 80%, var(--accent) 20%);
+      color: var(--text);
+      border: 1px solid var(--card-border);
     }
     .status-msg {
-        margin-top: 15px;
-        font-size: 13px;
-        padding: 10px;
-        border-radius: 8px;
-        display: none;
+      margin-top: 15px;
+      font-size: 13px;
+      padding: 10px;
+      border-radius: 8px;
+      display: none;
     }
     .status-success {
-        display: block;
-        background: rgba(16, 185, 129, 0.1);
-        color: #059669;
-        border: 1px solid rgba(16, 185, 129, 0.2);
+      display: block;
+      background: rgba(16, 185, 129, 0.1);
+      color: #059669;
+      border: 1px solid rgba(16, 185, 129, 0.2);
     }
     .status-error {
-        display: block;
-        background: rgba(239, 68, 68, 0.1);
-        color: #dc2626;
-        border: 1px solid rgba(239, 68, 68, 0.2);
+      display: block;
+      background: rgba(239, 68, 68, 0.1);
+      color: #dc2626;
+      border: 1px solid rgba(239, 68, 68, 0.2);
     }
     .profile-info-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
     }
     .info-item {
-        margin-bottom: 20px;
+      margin-bottom: 20px;
     }
     .info-label {
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--muted);
-        margin-bottom: 4px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 4px;
     }
     .info-value {
-        font-size: 16px;
-        font-weight: 700;
-        color: var(--text);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      word-break: break-word;
+    }
+    .info-value.muted {
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .field-hint {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .section-stack {
+      display: grid;
+      gap: 24px;
+    }
+    .list-block {
+      display: grid;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .list-pill {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--card-bg) 90%, white 10%);
+      font-size: 13px;
+    }
+    .list-pill strong {
+      color: var(--text);
+    }
+    .list-pill span {
+      color: var(--muted);
+      text-align: right;
+    }
+    .inline-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .inline-actions .save-btn {
+      min-width: 180px;
+    }
+    @media (max-width: 820px) {
+      .hero-card,
+      .account-grid {
+        grid-template-columns: 1fr;
+      }
+      .hero-avatar {
+        width: 96px;
+        height: 96px;
+        border-radius: 24px;
+      }
+      .hero-name {
+        font-size: 26px;
+      }
     }
   </style>
 </head>
@@ -154,58 +323,126 @@
     </a>
 
     <header class="account-header">
-      <i class="fas fa-user-circle fa-2x" style="color: var(--accent);"></i>
-      <h1>Account Settings</h1>
+      <div class="account-kicker"><i class="fas fa-user-circle"></i> User Profile Page</div>
+      <h1>Manage your Cynode identity across web, desktop, and PWA.</h1>
+      <p>
+        This page restores the full account surface alongside the compact sidepanel summary.
+        Your profile, sign-in state, and account-backed work all stay tied to the same Cynode backend.
+      </p>
     </header>
 
-    <div class="settings-card">
-        <div class="settings-title"><i class="fas fa-id-card"></i> Profile Overview</div>
-        <div class="profile-info-grid">
-            <div class="info-item">
-                <div class="info-label">Handle</div>
-                <div class="info-value" id="viewHandle">---</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">User ID</div>
-                <div class="info-value" id="viewId" style="font-family: monospace; font-size: 11px; opacity: 0.7;">---</div>
-            </div>
+    <div class="settings-card hero-card">
+      <div class="hero-avatar" aria-hidden="true">
+        <img id="avatarPreview" alt="" style="display:none;">
+        <div id="avatarFallback" class="hero-avatar-fallback"><i class="fas fa-user"></i></div>
+      </div>
+      <div class="hero-meta">
+        <div class="hero-name" id="heroName">Cynode user</div>
+        <div class="hero-handle" id="heroHandle">@---</div>
+        <div class="hero-email" id="heroEmail">---</div>
+        <div class="hero-status" id="heroStatus">Checking account status...</div>
+        <div class="hero-actions">
+          <a class="hero-link" href="/pricing"><i class="fas fa-chart-line"></i> Plans and usage</a>
+          <a class="hero-link" href="/"><i class="fas fa-layer-group"></i> Return to workspace</a>
         </div>
+      </div>
     </div>
 
-    <div class="settings-card">
-        <div class="settings-title"><i class="fas fa-edit"></i> Edit Profile</div>
-        <form id="profileForm">
+    <div class="account-grid">
+      <div class="section-stack">
+        <div class="settings-card">
+          <div class="settings-title"><i class="fas fa-id-card"></i> Profile Overview</div>
+          <div class="profile-info-grid">
+            <div class="info-item">
+              <div class="info-label">Handle</div>
+              <div class="info-value" id="viewHandle">---</div>
+            </div>
+            <div class="info-item">
+              <div class="info-label">User ID</div>
+              <div class="info-value" id="viewId" style="font-family: monospace; font-size: 11px; opacity: 0.7;">---</div>
+            </div>
+            <div class="info-item">
+              <div class="info-label">Personal Plan</div>
+              <div class="info-value" id="viewPlan">---</div>
+            </div>
+            <div class="info-item">
+              <div class="info-label">Sync Status</div>
+              <div class="info-value" id="viewSync">---</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <div class="settings-title"><i class="fas fa-edit"></i> Edit Profile</div>
+          <form id="profileForm">
             <div class="form-group">
-                <label class="form-label" for="displayName">Display Name</label>
-                <input class="form-input" type="text" id="displayName" placeholder="e.g. Joe Doe">
+              <label class="form-label" for="displayName">Display Name</label>
+              <input class="form-input" type="text" id="displayName" placeholder="e.g. Joe Doe">
             </div>
             <div class="form-group">
-                <label class="form-label" for="email">Email Address</label>
-                <input class="form-input" type="email" id="email" placeholder="joe@example.com">
+              <label class="form-label" for="email">Email Address</label>
+              <input class="form-input" type="email" id="email" placeholder="joe@example.com">
             </div>
-            <button type="submit" class="save-btn" id="saveProfileBtn">Update Profile</button>
+            <div class="form-group">
+              <label class="form-label" for="avatarUrl">Avatar Image URL</label>
+              <input class="form-input" type="url" id="avatarUrl" placeholder="https://example.com/avatar.png">
+              <div class="field-hint">Optional. Existing schema support was already present, but the full profile page was not exposing it here.</div>
+            </div>
+            <div class="inline-actions">
+              <button type="submit" class="save-btn" id="saveProfileBtn">Update Profile</button>
+            </div>
             <div id="profileStatus" class="status-msg"></div>
-        </form>
-    </div>
+          </form>
+        </div>
 
-    <div class="settings-card">
-        <div class="settings-title"><i class="fas fa-key"></i> Change Password</div>
-        <form id="passwordForm">
+        <div class="settings-card">
+          <div class="settings-title"><i class="fas fa-key"></i> Change Password</div>
+          <form id="passwordForm">
             <div class="form-group">
-                <label class="form-label" for="currentPassword">Current Password</label>
-                <input class="form-input" type="password" id="currentPassword" required>
+              <label class="form-label" for="currentPassword">Current Password</label>
+              <input class="form-input" type="password" id="currentPassword" required>
             </div>
             <div class="form-group">
-                <label class="form-label" for="newPassword">New Password</label>
-                <input class="form-input" type="password" id="newPassword" minlength="6" required>
+              <label class="form-label" for="newPassword">New Password</label>
+              <input class="form-input" type="password" id="newPassword" minlength="6" required>
             </div>
             <div class="form-group">
-                <label class="form-label" for="confirmPassword">Confirm New Password</label>
-                <input class="form-input" type="password" id="confirmPassword" minlength="6" required>
+              <label class="form-label" for="confirmPassword">Confirm New Password</label>
+              <input class="form-input" type="password" id="confirmPassword" minlength="6" required>
             </div>
-            <button type="submit" class="save-btn" id="savePasswordBtn">Update Password</button>
+            <div class="inline-actions">
+              <button type="submit" class="save-btn" id="savePasswordBtn">Update Password</button>
+            </div>
             <div id="passwordStatus" class="status-msg"></div>
-        </form>
+          </form>
+        </div>
+      </div>
+
+      <div class="section-stack">
+        <div class="settings-card">
+          <div class="settings-title"><i class="fas fa-building"></i> Organizations</div>
+          <div id="orgMemberships" class="list-block">
+            <div class="info-value muted">Checking organization memberships...</div>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <div class="settings-title"><i class="fas fa-wifi"></i> Account State</div>
+          <div class="profile-info-grid">
+            <div class="info-item">
+              <div class="info-label">Session</div>
+              <div class="info-value" id="viewSession">---</div>
+            </div>
+            <div class="info-item">
+              <div class="info-label">Profile Source</div>
+              <div class="info-value" id="viewSource">---</div>
+            </div>
+          </div>
+          <div class="field-hint" id="accountStateHelp">
+            Cynode keeps this page aligned with the same account system used by the web app, desktop app, and installed PWA.
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 

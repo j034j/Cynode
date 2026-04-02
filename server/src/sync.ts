@@ -50,12 +50,13 @@ export async function pushUserWorkToCloud(userId: string) {
       } else {
         await remote.user.upsert({
           where: { id: userId },
-          update: { handle: user.handle, email: user.email, displayName: user.displayName, passwordHash: user.passwordHash },
+          update: { handle: user.handle, email: user.email, displayName: user.displayName, avatarUrl: user.avatarUrl, passwordHash: user.passwordHash },
           create: { 
             id: user.id,
             handle: user.handle,
             email: user.email,
             displayName: user.displayName,
+            avatarUrl: user.avatarUrl,
             passwordHash: user.passwordHash
           }
         });
@@ -134,12 +135,13 @@ export async function pullUserWorkFromCloud(userId: string) {
       } else {
         await local.user.upsert({
           where: { id: userId },
-          update: { handle: remoteUser.handle, email: remoteUser.email, displayName: remoteUser.displayName, passwordHash: remoteUser.passwordHash },
+          update: { handle: remoteUser.handle, email: remoteUser.email, displayName: remoteUser.displayName, avatarUrl: remoteUser.avatarUrl, passwordHash: remoteUser.passwordHash },
           create: { 
             id: remoteUser.id,
             handle: remoteUser.handle,
             email: remoteUser.email,
             displayName: remoteUser.displayName,
+            avatarUrl: remoteUser.avatarUrl,
             passwordHash: remoteUser.passwordHash
           }
         });
@@ -240,6 +242,7 @@ export async function findAndPullRemoteUser(identifier: string): Promise<boolean
           handle: remoteUser.handle, 
           email: remoteUser.email, 
           displayName: remoteUser.displayName, 
+          avatarUrl: remoteUser.avatarUrl,
           passwordHash: remoteUser.passwordHash 
         },
         create: { 
@@ -247,6 +250,7 @@ export async function findAndPullRemoteUser(identifier: string): Promise<boolean
           handle: remoteUser.handle,
           email: remoteUser.email,
           displayName: remoteUser.displayName,
+          avatarUrl: remoteUser.avatarUrl,
           passwordHash: remoteUser.passwordHash
         }
       });

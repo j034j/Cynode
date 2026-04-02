@@ -298,6 +298,24 @@ html[data-theme="dark"] #toEditingModeBtn.active {
   color: color-mix(in srgb, var(--text) 76%, transparent);
 }
 
+.account-profile-actions {
+  margin-top: 10px;
+}
+
+.account-profile-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.account-profile-link:hover {
+  text-decoration: underline;
+}
+
 body.shared-readonly-mode .auth-status {
   color: #0b5fff;
   font-weight: 700;
