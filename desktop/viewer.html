@@ -174,7 +174,7 @@
     <button id="goBtn" class="viewer-btn primary" type="button">Go</button>
   </div>
 
-  <div class="viewer-stage">
+  <div id="viewerStage" class="viewer-stage">
     <div id="emptyState" class="viewer-empty">
       <div class="viewer-empty-card">
         <h1>Cynode Desktop Viewer</h1>
@@ -182,7 +182,6 @@
       </div>
     </div>
     <div id="loadingState" class="viewer-loading" hidden>Loading page...</div>
-    <webview id="viewerFrame" partition="persist:cynode-desktop" allowpopups hidden></webview>
   </div>
 
   <div class="viewer-footer">
@@ -193,7 +192,7 @@
   <script>
     (function () {
       const api = window.cynodeViewer;
-      const frame = document.getElementById('viewerFrame');
+      const viewerStage = document.getElementById('viewerStage');
       const urlInput = document.getElementById('urlInput');
       const statusText = document.getElementById('statusText');
       const emptyState = document.getElementById('emptyState');
@@ -205,6 +204,16 @@
       const goBtn = document.getElementById('goBtn');
 
       let currentUrl = '';
+      let currentTitle = 'Cynode Viewer';
+      let isEditingUrl = false;
+
+      function debugLog(message, extra) {
+        if (typeof extra === 'undefined') {
+          console.log(`[CynodeViewer] ${message}`);
+          return;
+        }
+        console.log(`[CynodeViewer] ${message}`, extra);
+      }
 
       function normalizeUrl(value) {
         const raw = String(value || '').trim();
@@ -213,99 +222,124 @@
         return `https://${raw}`;
       }
 
-      function showFrame() {
-        frame.hidden = false;
+      function updateStageBounds() {
+        if (!api || typeof api.setStageBounds !== 'function' || !viewerStage) return;
+        const rect = viewerStage.getBoundingClientRect();
+        api.setStageBounds({
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.max(0, Math.round(rect.width)),
+          height: Math.max(0, Math.round(rect.height)),
+        });
+        debugLog('Reported stage bounds.', {
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.max(0, Math.round(rect.width)),
+          height: Math.max(0, Math.round(rect.height)),
+        });
+      }
+
+      function showEmptyState() {
+        emptyState.hidden = false;
+        emptyState.style.display = 'flex';
+      }
+
+      function hideEmptyState() {
+        emptyState.hidden = true;
         emptyState.style.display = 'none';
       }
 
-      function updateNav() {
-        try {
-          backBtn.disabled = !frame.canGoBack();
-          forwardBtn.disabled = !frame.canGoForward();
-        } catch (_) {
-          backBtn.disabled = true;
-          forwardBtn.disabled = true;
-        }
-      }
-
-      function navigateTo(value, options = {}) {
-        const nextUrl = normalizeUrl(value);
-        if (!nextUrl) return;
-        currentUrl = nextUrl;
-        urlInput.value = nextUrl;
-        showFrame();
-        setLoading(true, `Loading ${nextUrl}`);
-        if (options.title) document.title = `${options.title} - Cynode Viewer`;
-        frame.src = nextUrl;
-      }
-
       function setLoading(isLoading, message) {
+        loadingState.hidden = !isLoading;
         loadingState.style.display = isLoading ? 'flex' : 'none';
         if (message) statusText.textContent = message;
       }
 
+      function applyViewerState(state = {}) {
+        const nextUrl = state && state.url ? String(state.url) : '';
+        currentUrl = nextUrl;
+        currentTitle = state && state.title ? String(state.title) : 'Cynode Viewer';
+
+        if (!isEditingUrl) {
+          urlInput.value = nextUrl;
+        }
+
+        backBtn.disabled = !(state && state.canGoBack);
+        forwardBtn.disabled = !(state && state.canGoForward);
+        openExternalBtn.disabled = !nextUrl;
+
+        const status = state && state.status ? String(state.status) : 'idle';
+        const isLoading = status === 'requested' || status === 'loading' || status === 'redirected';
+        if (isLoading) {
+          setLoading(true, `Loading ${nextUrl || 'page'}...`);
+        } else if (status === 'error') {
+          const detail = state && state.errorDescription ? String(state.errorDescription) : 'Unable to load that page.';
+          setLoading(false, detail);
+        } else {
+          setLoading(false, nextUrl || 'Ready for the next page.');
+        }
+        if (nextUrl) hideEmptyState();
+        else showEmptyState();
+        document.title = `${currentTitle} - Cynode Viewer`;
+        debugLog('Applied viewer state.', state);
+      }
+
       backBtn.addEventListener('click', () => {
-        try { if (frame.canGoBack()) frame.goBack(); } catch (_) {}
+        if (!api || typeof api.sendCommand !== 'function') return;
+        api.sendCommand('back');
       });
 
       forwardBtn.addEventListener('click', () => {
-        try { if (frame.canGoForward()) frame.goForward(); } catch (_) {}
+        if (!api || typeof api.sendCommand !== 'function') return;
+        api.sendCommand('forward');
       });
 
       refreshBtn.addEventListener('click', () => {
-        try { if (currentUrl) frame.reload(); } catch (_) {}
+        if (!api || typeof api.sendCommand !== 'function') return;
+        api.sendCommand('refresh');
       });
 
       openExternalBtn.addEventListener('click', () => {
-        if (currentUrl) api.openExternal(currentUrl);
+        if (!api || typeof api.sendCommand !== 'function' || !currentUrl) return;
+        api.sendCommand('open-external', { url: currentUrl });
       });
 
-      goBtn.addEventListener('click', () => navigateTo(urlInput.value));
+      goBtn.addEventListener('click', () => {
+        if (!api || typeof api.sendCommand !== 'function') return;
+        const nextUrl = normalizeUrl(urlInput.value);
+        if (!nextUrl) return;
+        api.sendCommand('go', { url: nextUrl });
+      });
       urlInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
           event.preventDefault();
-          navigateTo(urlInput.value);
+          const nextUrl = normalizeUrl(urlInput.value);
+          if (!nextUrl) return;
+          api.sendCommand('go', { url: nextUrl });
         }
       });
-
-      frame.addEventListener('did-start-loading', () => {
-        showFrame();
-        setLoading(true, `Loading ${currentUrl || 'page'}`);
-        updateNav();
+      urlInput.addEventListener('focus', () => { isEditingUrl = true; });
+      urlInput.addEventListener('blur', () => {
+        isEditingUrl = false;
+        urlInput.value = currentUrl;
       });
 
-      frame.addEventListener('did-stop-loading', () => {
-        setLoading(false, currentUrl || 'Page loaded');
-        updateNav();
-        try {
-          const loadedUrl = frame.getURL();
-          if (loadedUrl) {
-            currentUrl = loadedUrl;
-            urlInput.value = loadedUrl;
-          }
-        } catch (_) {}
-      });
+      if (api && typeof api.onState === 'function') {
+        api.onState((state) => applyViewerState(state));
+      }
 
-      frame.addEventListener('page-title-updated', (event) => {
-        const title = event && event.title ? String(event.title) : '';
-        if (title) document.title = `${title} - Cynode Viewer`;
-      });
+      window.addEventListener('resize', () => updateStageBounds());
+      window.addEventListener('load', () => updateStageBounds());
+      document.addEventListener('DOMContentLoaded', () => updateStageBounds());
 
-      frame.addEventListener('did-fail-load', (event) => {
-        if (event && event.errorCode === -3) return;
-        setLoading(false, `Unable to load ${currentUrl || 'that page'}`);
-      });
+      try {
+        const observer = new ResizeObserver(() => updateStageBounds());
+        if (viewerStage) observer.observe(viewerStage);
+      } catch (_) {}
 
-      frame.addEventListener('dom-ready', () => {
-        updateNav();
-      });
-
-      api.onOpenUrl((payload) => {
-        if (!payload || !payload.url) return;
-        navigateTo(payload.url, payload);
-      });
-
-      updateNav();
+      debugLog('Viewer shell initialized.');
+      applyViewerState({});
+      updateStageBounds();
     })();
   </script>
 </body>

@@ -8,6 +8,12 @@ const desktopApi = {
   openExternal: (url) => ipcRenderer.invoke('cynode-desktop:open-external', { url }),
   launchProtocol: (url, options = {}) => ipcRenderer.invoke('cynode-desktop:launch-protocol', { url, ...options }),
   showMessage: (options = {}) => ipcRenderer.invoke('cynode-desktop:show-message', options),
+  onViewerNavigation: (handler) => {
+    if (typeof handler !== 'function') return () => {};
+    const listener = (_event, payload) => handler(payload || {});
+    ipcRenderer.on('cynode-desktop:viewer-navigation', listener);
+    return () => ipcRenderer.removeListener('cynode-desktop:viewer-navigation', listener);
+  },
 };
 
 contextBridge.exposeInMainWorld('cynodeDesktop', desktopApi);

@@ -50,6 +50,8 @@ let _resolveUrlForViewerCallback = null;
 // --- Metadata Cache ---
 let failedFaviconDomains = new Set();
 const metadataCache = new Map();
+const metadataRequestCache = new Map();
+let previewLoadToken = 0;
 
 // --- Immersive State ---
 let _isImmersive = false;
@@ -614,40 +616,48 @@ async function fetchUrlMetadata(url) {
     if (!url) return null;
     const cacheKey = `metadata_${url}`;
     if (metadataCache.has(cacheKey)) return metadataCache.get(cacheKey);
+    if (metadataRequestCache.has(cacheKey)) return metadataRequestCache.get(cacheKey);
     const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(url)}&palette=true&audio=false&video=false`;
-    
-    // Add a 3s timeout to metadata fetch to avoid blocking playback timing
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-    try {
-        const response = await fetch(apiUrl, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (!response.ok) {
-            const msg = `Microlink preview unavailable for ${url}: ${response.status}`;
-            if (response.status >= 400 && response.status < 500) {
-                // Use debug level for 4xx to keep console clean for common blocked sites
-                console.debug(msg);
-            } else {
-                console.error(msg);
+    const request = (async () => {
+        // Add a 3s timeout to metadata fetch to avoid blocking playback timing
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+        try {
+            const response = await fetch(apiUrl, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (!response.ok) {
+                const msg = `Microlink preview unavailable for ${url}: ${response.status}`;
+                if (response.status >= 400 && response.status < 500) {
+                    // Use debug level for 4xx to keep console clean for common blocked sites
+                    console.debug(msg);
+                } else {
+                    console.error(msg);
+                }
+                metadataCache.set(cacheKey, null);
+                return null;
             }
+            const data = await response.json();
+            if (data.status === 'success' && data.data) {
+                metadataCache.set(cacheKey, data.data);
+                return data.data;
+            } else {
+                console.warn(`Microlink API returned '${data.status}' for ${url}.`);
+                metadataCache.set(cacheKey, null);
+                return null;
+            }
+        } catch (error) {
+            console.warn(`Network error fetching metadata for ${url}:`, error);
             metadataCache.set(cacheKey, null);
             return null;
+        } finally {
+            metadataRequestCache.delete(cacheKey);
         }
-        const data = await response.json();
-        if (data.status === 'success' && data.data) {
-            metadataCache.set(cacheKey, data.data);
-            return data.data;
-        } else {
-            console.warn(`Microlink API returned '${data.status}' for ${url}.`);
-            metadataCache.set(cacheKey, null);
-            return null;
-        }
-    } catch (error) {
-        console.warn(`Network error fetching metadata for ${url}:`, error);
-        metadataCache.set(cacheKey, null);
-        return null;
-    }
+    })();
+
+    metadataRequestCache.set(cacheKey, request);
+    return request;
 }
 
 async function loadUrlInViewer(url, nodeId) {
@@ -657,11 +667,21 @@ async function loadUrlInViewer(url, nodeId) {
         if (!viewerFrame) return;
     }
 
+    const loadToken = ++previewLoadToken;
+
+    if (!url || !String(url).trim()) {
+        try { viewerFrame.sandbox = "allow-scripts allow-popups"; } catch (_) {}
+        viewerFrame.src = 'about:blank';
+        viewerFrame.srcdoc = '<p style="text-align: center; padding: 40px 20px; color: #666; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Arial, sans-serif;">Preview will load here when playing or selecting a node.</p>';
+        return;
+    }
+
     // Resolve localfile: to blob:
     let resolved = null;
     if (_resolveUrlForViewerCallback) {
         try { resolved = await _resolveUrlForViewerCallback(url, nodeId); } catch (_) { resolved = null; }
     }
+    if (loadToken !== previewLoadToken) return;
 
     if (resolved && resolved.kind === 'localfile') {
         const name = resolved.meta && resolved.meta.name ? String(resolved.meta.name) : 'Local file';
@@ -709,8 +729,30 @@ async function loadUrlInViewer(url, nodeId) {
         return;
     }
 
+    const domain = finalUrl.split('/')[2] || finalUrl;
+    const safeInitialUrl = escapeAttr(finalUrl);
+    const safeInitialUrlJs = escapeJsString(finalUrl);
+    const safeInitialDomain = escapeHtml(domain);
+    viewerFrame.srcdoc = `
+    <style>
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 36px 20px; text-align: center; line-height: 1.6; color: #445; background: #f8fafc; }
+        .quick-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 26px 22px; max-width: 520px; margin: 0 auto; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06); }
+        .quick-domain { font-size: 1.05rem; font-weight: 700; color: #0f172a; margin-bottom: 10px; word-break: break-word; }
+        .quick-copy { font-size: 0.95rem; color: #64748b; margin-bottom: 18px; }
+        .quick-action { display: inline-block; background: #0b5fff; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 0.92rem; text-decoration: none; }
+    </style>
+    <body>
+        <div class="quick-card">
+            <div class="quick-domain">${safeInitialDomain}</div>
+            <div class="quick-copy">Preparing a richer preview. You can already open the live page now.</div>
+            <a href="${safeInitialUrl}" target="_blank" rel="noopener noreferrer" class="quick-action"
+               onclick="try{parent.postMessage({t:'nodex_visit',nodeId:${nodeId},url:'${safeInitialUrlJs}'},'*')}catch(e){}">Open Website</a>
+        </div>
+    </body>`;
+
     // Fetch metadata (async)
     const metadata = await fetchUrlMetadata(finalUrl);
+    if (loadToken !== previewLoadToken) return;
     let previewHtml;
 
     if (metadata) {

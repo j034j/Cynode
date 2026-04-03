@@ -1,5 +1,6 @@
 // --- State ---
-let currentNodeCount = 8; // Default
+const DEFAULT_CLEAR_NODE_COUNT = 8;
+let currentNodeCount = DEFAULT_CLEAR_NODE_COUNT;
 let nodeUrls = {}; // Stores URL for each node ID { 1: "url1", 2: "url2", ... }
 let nodeCaptions = {}; // Stores { title: string, caption: string } for each node ID
 let lastSelectedNode = null; // Track the most recently interacted node ID
@@ -549,11 +550,16 @@ let graphTopicOrigin = null;
 let pendingLastActiveGraphRestore = null;
 let pendingCloudSyncInFlight = false;
 let refreshSavedLinksFn = null;
+let currentSavedLinksCache = [];
+let explicitSaveBaselineSignature = '';
+let cloudRefreshInFlight = false;
+let lastCloudRefreshAt = 0;
+let desktopViewerState = { nodeId: null, url: '', title: '' };
 
 // Playback media state
 
 // Remote media loaded from a share code (public URLs served by backend).
-let remoteMedia = { background: null, voiceByNode: {} };
+let remoteMedia = { background: null, voiceByNode: {}, filesByNode: {} };
 let activeShareCode = null;
 
 let voiceDbPromise = null;
@@ -593,6 +599,110 @@ function displayTextForUrl(url) {
     const meta = parseLocalFileUrl(url);
     if (!meta) return 'Local file';
     return meta.name ? `Local file: ${meta.name}` : 'Local file';
+}
+
+function buildComparableGraphState() {
+    const normalizedUrls = {};
+    const normalizedCaptions = {};
+    const normalizedPauseSecByNode = {};
+
+    for (let i = 1; i <= currentNodeCount; i++) {
+        normalizedUrls[i] = nodeUrls[i] ? String(nodeUrls[i]) : '';
+        if (nodeCaptions[i]) {
+            normalizedCaptions[i] = {
+                title: nodeCaptions[i].title ? String(nodeCaptions[i].title) : '',
+                caption: nodeCaptions[i].caption ? String(nodeCaptions[i].caption) : '',
+            };
+        }
+        if (Object.prototype.hasOwnProperty.call(nodeExtraDelaySecByNode || {}, i)) {
+            normalizedPauseSecByNode[i] = Number(nodeExtraDelaySecByNode[i]);
+        }
+    }
+
+    return {
+        nodeCount: currentNodeCount,
+        lastSelectedNode: lastSelectedNode ?? null,
+        nodeUrls: normalizedUrls,
+        nodeCaptions: normalizedCaptions,
+        nodePauseSecByNode: normalizedPauseSecByNode,
+        topic: String(graphTopic || '').trim(),
+    };
+}
+
+function computeComparableGraphSignature() {
+    return JSON.stringify(buildComparableGraphState());
+}
+
+function markExplicitSaveBaseline() {
+    explicitSaveBaselineSignature = computeComparableGraphSignature();
+}
+
+function clearExplicitSaveBaseline() {
+    explicitSaveBaselineSignature = '';
+}
+
+function hasMeaningfulGraphContent() {
+    if (String(graphTopic || '').trim()) return true;
+    if (Object.keys(nodeCaptions || {}).length > 0) return true;
+    if (Object.keys(nodeExtraDelaySecByNode || {}).length > 0) return true;
+    for (let i = 1; i <= currentNodeCount; i++) {
+        if (nodeUrls[i] && String(nodeUrls[i]).trim()) return true;
+    }
+    return false;
+}
+
+function hasUnsavedChangesSinceExplicitSave() {
+    if (!hasMeaningfulGraphContent()) return false;
+    if (!explicitSaveBaselineSignature) return true;
+    return computeComparableGraphSignature() !== explicitSaveBaselineSignature;
+}
+
+function buildUntitledTopicLabel() {
+    return 'Untitled Nodegraph';
+}
+
+function setDesktopViewerState(payload = {}) {
+    const nextNodeId = Number(payload.nodeId);
+    desktopViewerState = {
+        nodeId: Number.isFinite(nextNodeId) && nextNodeId >= 1 ? nextNodeId : null,
+        url: payload && payload.url ? String(payload.url) : '',
+        title: payload && payload.title ? String(payload.title) : '',
+    };
+
+    if (desktopViewerState.nodeId && desktopViewerState.nodeId === lastSelectedNode) {
+        updateRecentUrl(lastSelectedNode);
+    }
+}
+
+function getDisplayUrlForNode(nodeId) {
+    if (
+        desktopViewerState
+        && desktopViewerState.url
+        && desktopViewerState.nodeId
+        && Number(desktopViewerState.nodeId) === Number(nodeId)
+    ) {
+        return desktopViewerState.url;
+    }
+    return nodeUrls[nodeId] ? String(nodeUrls[nodeId]) : '';
+}
+
+function buildSavedLinksRenderSignature(items) {
+    const normalizedItems = Array.isArray(items)
+        ? items.map((item) => ({
+            code: item && item.code ? String(item.code) : '',
+            shareUrl: item && item.shareUrl ? String(item.shareUrl) : '',
+            topic: item && item.topic ? String(item.topic) : '',
+            namespace: item && item.namespace ? String(item.namespace) : '',
+            createdAt: item && item.createdAt ? String(item.createdAt) : '',
+        }))
+        : [];
+
+    return JSON.stringify({
+        items: normalizedItems,
+        currentSavedShareCode: currentSavedShareCode || '',
+        currentSavedShareUrl: currentSavedShareUrl || '',
+        graphTopic: String(graphTopic || '').trim(),
+    });
 }
 
 function getLastActiveGraphStorageKey(user = currentUser) {
@@ -869,7 +979,7 @@ function bgSetVolume(vol) {
 }
 
 function applyRemoteMediaFromShare(shared) {
-    remoteMedia = { background: null, voiceByNode: {} };
+    remoteMedia = { background: null, voiceByNode: {}, filesByNode: {} };
     if (!shared || !shared.media) return;
 
     if (shared.media.background && shared.media.background.url) {
@@ -888,6 +998,10 @@ function applyRemoteMediaFromShare(shared) {
             if (voiceEnabledEl) voiceEnabledEl.checked = true;
             if (voiceStatusEl) voiceStatusEl.textContent = 'Voice annotations: saved link audio.';
         }
+    }
+
+    if (shared.media.filesByNode && typeof shared.media.filesByNode === 'object') {
+        remoteMedia.filesByNode = shared.media.filesByNode;
     }
 }
 
@@ -1415,9 +1529,13 @@ function applySharedReadOnlyMode() {
     });
 }
 
-async function uploadSavedMedia(code, exportSnapshot) {
-    if (!code) return;
+async function uploadSavedMedia(code, exportSnapshot, { topic } = {}) {
+    if (!code) return { portableSnapshot: exportSnapshot || null, replacedLocalFiles: false };
     const nodeIndexMap = exportSnapshot && exportSnapshot.nodeIndexMap ? exportSnapshot.nodeIndexMap : {};
+    const portableNodeUrls = exportSnapshot && exportSnapshot.nodeUrls
+        ? { ...exportSnapshot.nodeUrls }
+        : {};
+    let replacedLocalFiles = false;
 
     // Background audio: only upload when a local file is selected (URL sources cannot be reliably fetched due to CORS/SSRF).
     if (bgAudioEnabled && bgAudioSource === 'file') {
@@ -1473,7 +1591,9 @@ async function uploadSavedMedia(code, exportSnapshot) {
                     const res = await apiUpload(`/api/v1/saved/${encodeURIComponent(code)}/media/node/${newNodeId}`, fd);
                     if (res && res.url) {
                         filesByNode[String(newNodeId)] = res;
+                        portableNodeUrls[String(newNodeId)] = res.url;
                         nodeUrls[oldNodeId] = res.url; // Immediately swap it locally
+                        replacedLocalFiles = true;
                     }
                 }
             } catch (e) {
@@ -1484,6 +1604,21 @@ async function uploadSavedMedia(code, exportSnapshot) {
     if (Object.keys(filesByNode).length > 0) {
         remoteMedia.filesByNode = { ...(remoteMedia.filesByNode || {}), ...filesByNode };
     }
+
+    const portableSnapshot = exportSnapshot
+        ? { ...exportSnapshot, nodeUrls: portableNodeUrls }
+        : null;
+
+    if (portableSnapshot && replacedLocalFiles) {
+        await apiJson(`/api/v1/saved/${encodeURIComponent(code)}`, {
+            method: 'PUT',
+            body: JSON.stringify(buildSavedPayload(portableSnapshot, {
+                topic: topic || undefined,
+            })),
+        });
+    }
+
+    return { portableSnapshot, replacedLocalFiles };
 }
 
 function buildSavedPayload(exportSnapshot, extras = {}) {
@@ -1545,6 +1680,95 @@ async function updateSavedNodegraphInAccount(code, exportSnapshot, { topic } = {
                 : 'Saved changes queued offline. Cynode will update the cloud version after reconnect.',
         };
     }
+}
+
+async function persistCurrentGraphAsSaved({ preferUpdate = true, fallbackTopic = null } = {}) {
+    flushPendingGraphTopicInput();
+    const exportSnapshot = buildNormalizedExportSnapshot();
+    if (!exportSnapshot) {
+        return { ok: false, reason: 'empty_graph' };
+    }
+
+    const normalizedFallbackTopic = String(fallbackTopic || '').trim();
+    const effectiveTopic = String(graphTopic || '').trim() || normalizedFallbackTopic || undefined;
+    const saveAsSelect = document.getElementById('saveAsSelect');
+
+    const shouldUpdateExisting = preferUpdate && !!currentSavedShareCode;
+    const result = shouldUpdateExisting
+        ? await updateSavedNodegraphInAccount(currentSavedShareCode, exportSnapshot, { topic: effectiveTopic })
+        : await saveNodegraphToAccount(exportSnapshot, {
+            organizationId: saveAsSelect && saveAsSelect.value ? saveAsSelect.value : undefined,
+            topic: effectiveTopic,
+        });
+
+    if (!result) {
+        return { ok: false, reason: 'save_failed' };
+    }
+
+    const finalCode = result.code || currentSavedShareCode || null;
+    const finalTopic = effectiveTopic || '';
+
+    if (finalCode) {
+        graphTopicOrigin = `saved:${finalCode}`;
+        currentSavedShareCode = finalCode;
+        currentSavedShareUrl = result.shareUrl || (result.queued ? null : createSavedGraphUrl(finalCode));
+        updateUpdateSavedButton();
+        if (finalTopic || !String(graphTopic || '').trim()) {
+            setGraphTopicFromExternal(finalTopic, graphTopicOrigin);
+        }
+    }
+
+    if (!result.queued && finalCode) {
+        const mediaResult = await uploadSavedMedia(finalCode, exportSnapshot, { topic: finalTopic || undefined });
+        if (mediaResult && mediaResult.portableSnapshot) {
+            saveNodeData();
+        }
+        writeLastActiveGraphForUser(finalCode, {
+            origin: 'saved',
+            shareUrl: currentSavedShareUrl || createSavedGraphUrl(finalCode),
+        });
+        if (typeof refreshSavedLinksFn === 'function') {
+            try { await refreshSavedLinksFn(); } catch (_) { }
+        }
+    } else {
+        updateAccountProfileCard();
+    }
+
+    markExplicitSaveBaseline();
+    return { ok: true, result };
+}
+
+async function refreshCloudBackedEditorState({ force = false } = {}) {
+    if (!currentUser || cloudRefreshInFlight) return false;
+    if (!force && Date.now() - lastCloudRefreshAt < 15000) return false;
+    if (!navigator.onLine) return false;
+
+    cloudRefreshInFlight = true;
+    lastCloudRefreshAt = Date.now();
+
+    try {
+        if (typeof refreshSavedLinksFn === 'function') {
+            try { await refreshSavedLinksFn(); } catch (_) { }
+        }
+
+        if (
+            currentSavedShareCode
+            && !String(currentSavedShareCode).startsWith('offline_')
+            && !hasUnsavedChangesSinceExplicitSave()
+        ) {
+            await loadSavedOrSharedGraphIntoEditor(currentSavedShareCode, {
+                origin: 'saved',
+                enableShareAnalytics: false,
+                editableAsShared: false,
+                shareUrl: currentSavedShareUrl || null,
+            });
+            return true;
+        }
+    } finally {
+        cloudRefreshInFlight = false;
+    }
+
+    return false;
 }
 
 async function processPendingCloudSync() {
@@ -1612,7 +1836,7 @@ async function processPendingCloudSync() {
                             })),
                         });
                         if (response && response.code) {
-                            try { await uploadSavedMedia(response.code, action.snapshot); } catch (_) { }
+                            try { await uploadSavedMedia(response.code, action.snapshot, { topic: action.topic || undefined }); } catch (_) { }
                             if (currentSavedShareCode === action.placeholderCode) {
                                 currentSavedShareCode = response.code;
                                 currentSavedShareUrl = response.shareUrl || createSavedGraphUrl(response.code);
@@ -1630,7 +1854,7 @@ async function processPendingCloudSync() {
                                 topic: action.topic || undefined,
                             })),
                         });
-                        try { await uploadSavedMedia(action.code, action.snapshot); } catch (_) { }
+                        try { await uploadSavedMedia(action.code, action.snapshot, { topic: action.topic || undefined }); } catch (_) { }
                         if (response && response.shareUrl && currentSavedShareCode === action.code) {
                             currentSavedShareUrl = response.shareUrl;
                             writeLastActiveGraphForUser(action.code, { origin: 'saved', shareUrl: currentSavedShareUrl, user: syncUser });
@@ -1665,9 +1889,18 @@ function setGraphTopicFromInput(value) {
     // Do not trim the live input value, otherwise typing a space (as a trailing char) gets immediately removed.
     graphTopic = String(value || '');
     const trimmed = graphTopic.trim();
-    graphTopicOrigin = 'draft';
-    currentSavedShareCode = null;
-    currentSavedShareUrl = null;
+
+    const savedOrigin = typeof graphTopicOrigin === 'string' && graphTopicOrigin.startsWith('saved:')
+        ? graphTopicOrigin
+        : null;
+
+    if (savedOrigin && currentSavedShareCode) {
+        graphTopicOrigin = savedOrigin;
+    } else {
+        graphTopicOrigin = 'draft';
+        currentSavedShareCode = null;
+        currentSavedShareUrl = null;
+    }
     updateUpdateSavedButton();
 
     try {
@@ -1745,6 +1978,12 @@ let bgAudioDuckEl;
 let bgAudioPreviewPlayBtn;
 let bgAudioPreviewStopBtn;
 let bgAudioStatusEl;
+let settingsPickerRenderSignature = '';
+let settingsMiniGraphRenderSignature = '';
+let settingsOverridesRenderSignature = '';
+let topicInputCommitTimer = null;
+let playbackSettingsPersistTimer = null;
+let savedLinksRenderSignature = '';
 
 function readJson(value, fallback) {
     try { return JSON.parse(value); } catch (_) { return fallback; }
@@ -1766,6 +2005,36 @@ function persistPlaybackSettings() {
         localStorage.setItem(BG_AUDIO_MODE_KEY, String(bgAudioMode || 'continuous'));
         localStorage.setItem(BG_AUDIO_DUCK_KEY, bgAudioDuck ? '1' : '0');
     } catch (_) { }
+}
+
+function scheduleGraphTopicInput(value) {
+    if (topicInputCommitTimer) {
+        clearTimeout(topicInputCommitTimer);
+        topicInputCommitTimer = null;
+    }
+    topicInputCommitTimer = setTimeout(() => {
+        topicInputCommitTimer = null;
+        setGraphTopicFromInput(value);
+    }, 120);
+}
+
+function flushPendingGraphTopicInput() {
+    if (!topicInputCommitTimer) return;
+    clearTimeout(topicInputCommitTimer);
+    topicInputCommitTimer = null;
+    const input = document.getElementById('topicInput');
+    setGraphTopicFromInput(input ? input.value : graphTopic);
+}
+
+function schedulePlaybackSettingsPersist(delay = 120) {
+    if (playbackSettingsPersistTimer) {
+        clearTimeout(playbackSettingsPersistTimer);
+        playbackSettingsPersistTimer = null;
+    }
+    playbackSettingsPersistTimer = setTimeout(() => {
+        playbackSettingsPersistTimer = null;
+        persistPlaybackSettings();
+    }, Math.max(0, Number(delay) || 0));
 }
 
 function loadPlaybackSettings() {
@@ -1852,6 +2121,44 @@ function getNodePickerLabel(nodeId) {
     return labelParts.join(' | ');
 }
 
+function buildSettingsPickerRenderSignature(selectedNodeId) {
+    const labels = [];
+    for (let i = 1; i <= currentNodeCount; i++) labels.push(getNodePickerLabel(i));
+    return JSON.stringify({
+        selectedNodeId: selectedNodeId || null,
+        nodeCount: currentNodeCount,
+        labels,
+    });
+}
+
+function buildSettingsMiniGraphRenderSignature(activeNodeId) {
+    const nodes = [];
+    for (let i = 1; i <= currentNodeCount; i++) {
+        nodes.push([
+            i,
+            !!(nodeUrls[i] && String(nodeUrls[i]).trim()),
+            !!(remoteMedia?.voiceByNode?.[String(i)]),
+            i === activeNodeId,
+        ]);
+    }
+    return JSON.stringify(nodes);
+}
+
+function buildNodePauseOverridesRenderSignature(activeNodeId) {
+    const rows = [];
+    for (let i = 1; i <= currentNodeCount; i++) {
+        rows.push([
+            i,
+            i === activeNodeId,
+            getNodeCustomPauseSec(i),
+            getEffectiveNodePauseSec(i),
+            !!(nodeUrls[i] && String(nodeUrls[i]).trim()),
+            !!(remoteMedia?.voiceByNode?.[String(i)]),
+        ]);
+    }
+    return JSON.stringify(rows);
+}
+
 function updateUpdateSavedButton() {
     if (!updateSavedBtn) return;
     const canUpdate = !!currentSavedShareCode;
@@ -1881,8 +2188,11 @@ function updateSettingsNodeContext(nodeId) {
     }
 }
 
-function renderSettingsMiniNodeGraph(activeNodeId) {
+function renderSettingsMiniNodeGraph(activeNodeId, { force = false } = {}) {
     if (!settingsMiniNodeGraph) return;
+    const signature = buildSettingsMiniGraphRenderSignature(activeNodeId);
+    if (!force && signature === settingsMiniGraphRenderSignature) return;
+    settingsMiniGraphRenderSignature = signature;
     settingsMiniNodeGraph.innerHTML = '';
     for (let i = 1; i <= currentNodeCount; i++) {
         const btn = document.createElement('button');
@@ -1938,23 +2248,30 @@ function buildNodePickerOptions(selectEl, selectedNodeId) {
     selectEl.value = String(target);
 }
 
-function rebuildSettingsNodePickers() {
+function rebuildSettingsNodePickers({ force = false } = {}) {
     const selected = getSelectedNodeIdForSettings();
-    buildNodePickerOptions(settingsNodePicker, selected);
-    buildNodePickerOptions(voiceNodePicker, selected);
-    syncSettingsNodePicker(selected);
-    if (settingsNodePickerSummary) {
-        settingsNodePickerSummary.textContent = currentNodeCount > 0
-            ? `Current graph copy in this panel: ${currentNodeCount} node${currentNodeCount === 1 ? '' : 's'} with the same node order and URL associations as the active nodegraph.`
-            : 'No nodes are available in the current graph yet.';
+    const signature = buildSettingsPickerRenderSignature(selected);
+    if (force || signature !== settingsPickerRenderSignature) {
+        settingsPickerRenderSignature = signature;
+        buildNodePickerOptions(settingsNodePicker, selected);
+        buildNodePickerOptions(voiceNodePicker, selected);
+        if (settingsNodePickerSummary) {
+            settingsNodePickerSummary.textContent = currentNodeCount > 0
+                ? `Current graph copy in this panel: ${currentNodeCount} node${currentNodeCount === 1 ? '' : 's'} with the same node order and URL associations as the active nodegraph.`
+                : 'No nodes are available in the current graph yet.';
+        }
     }
+    syncSettingsNodePicker(selected);
     updateSettingsNodeContext(selected);
     renderSettingsMiniNodeGraph(selected);
 }
 
-function renderNodePauseOverridesList(activeNodeId) {
+function renderNodePauseOverridesList(activeNodeId, { rebuildPickers = true, force = false } = {}) {
     if (!nodePauseOverridesList) return;
-    rebuildSettingsNodePickers();
+    if (rebuildPickers) rebuildSettingsNodePickers({ force });
+    const signature = buildNodePauseOverridesRenderSignature(activeNodeId);
+    if (!force && signature === settingsOverridesRenderSignature) return;
+    settingsOverridesRenderSignature = signature;
     nodePauseOverridesList.innerHTML = '';
     if (currentNodeCount < 1) {
         nodePauseOverridesList.textContent = '';
@@ -2046,17 +2363,14 @@ async function updateVoiceStatus(nodeId) {
     if (!voiceStatusEl) return;
     if (!nodeId) {
         voiceStatusEl.textContent = 'Select a node to record a voice annotation.';
-        renderSettingsMiniNodeGraph(getSelectedNodeIdForSettings());
         return;
     }
     const blob = await voiceGetBlobForNode(nodeId);
     if (!blob) {
         voiceStatusEl.textContent = `Node ${nodeId}: no voice annotation recorded.`;
-        renderSettingsMiniNodeGraph(nodeId);
         return;
     }
     voiceStatusEl.textContent = `Node ${nodeId}: voice annotation recorded.`;
-    renderSettingsMiniNodeGraph(nodeId);
 }
 
 async function startVoiceRecording(nodeId) {
@@ -2098,9 +2412,7 @@ async function startVoiceRecording(nodeId) {
                 if (voiceRecBtn) voiceRecBtn.disabled = false;
                 if (voiceStopBtn) voiceStopBtn.disabled = true;
                 const selected = getSelectedNodeIdForSettings();
-                renderNodePauseOverridesList(selected);
-                await updateVoiceStatus(selected);
-                await updateVoiceSettingsForSelectedNode(selected);
+                await updateVoiceSettingsForSelectedNode(selected, { forceRender: true });
             }
         });
 
@@ -2183,13 +2495,21 @@ function setupVoiceSettings() {
     if (bgAudioVolumeNumEl) bgAudioVolumeNumEl.value = String(bgAudioVolume);
     if (bgAudioDuckEl) bgAudioDuckEl.checked = !!bgAudioDuck;
 
-    const syncBaseDelay = (sec) => {
+    const syncBaseDelay = (sec, { immediatePersist = false } = {}) => {
         const next = Math.min(12, Math.max(0.5, Number(sec) || 3));
         playbackBaseDelaySec = next;
         if (playbackBaseDelayRange) playbackBaseDelayRange.value = String(next);
         if (playbackBaseDelayNum) playbackBaseDelayNum.value = String(next);
-        persistPlaybackSettings();
-        renderNodePauseOverridesList(getSelectedNodeIdForSettings());
+        if (immediatePersist) persistPlaybackSettings();
+        else schedulePlaybackSettingsPersist();
+        renderNodePauseOverridesList(getSelectedNodeIdForSettings(), { rebuildPickers: false });
+        if (nodePauseOverrideHint) {
+            const selectedNodeId = getSelectedNodeIdForSettings();
+            const customPause = getNodeCustomPauseSec(selectedNodeId);
+            if (selectedNodeId && customPause === null) {
+                nodePauseOverrideHint.textContent = `Node ${selectedNodeId} currently uses the default pause of ${next}s.`;
+            }
+        }
     };
 
     // Exported via shared so it can be called from loadPlaybackSettings
@@ -2253,7 +2573,14 @@ function setupVoiceSettings() {
     window._updatePlaybackModeUI(true);
 
     playbackBaseDelayRange?.addEventListener('input', () => syncBaseDelay(playbackBaseDelayRange.value));
+    playbackBaseDelayRange?.addEventListener('change', () => syncBaseDelay(playbackBaseDelayRange.value, { immediatePersist: true }));
     playbackBaseDelayNum?.addEventListener('input', () => syncBaseDelay(playbackBaseDelayNum.value));
+    playbackBaseDelayNum?.addEventListener('change', () => syncBaseDelay(playbackBaseDelayNum.value, { immediatePersist: true }));
+    playbackBaseDelayNum?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        syncBaseDelay(playbackBaseDelayNum.value, { immediatePersist: true });
+    });
 
     voiceEnabledEl?.addEventListener('change', () => {
         voiceEnabled = !!voiceEnabledEl.checked;
@@ -2322,16 +2649,24 @@ function setupVoiceSettings() {
         persistPlaybackSettings();
     });
 
-    const syncBgVol = (v) => {
+    const syncBgVol = (v, { immediatePersist = false } = {}) => {
         const next = Math.max(0, Math.min(1, Number(v)));
         if (!Number.isFinite(next)) return;
         bgSetVolume(next);
         if (bgAudioVolumeEl) bgAudioVolumeEl.value = String(next);
         if (bgAudioVolumeNumEl) bgAudioVolumeNumEl.value = String(next);
-        persistPlaybackSettings();
+        if (immediatePersist) persistPlaybackSettings();
+        else schedulePlaybackSettingsPersist();
     };
     bgAudioVolumeEl?.addEventListener('input', () => syncBgVol(bgAudioVolumeEl.value));
+    bgAudioVolumeEl?.addEventListener('change', () => syncBgVol(bgAudioVolumeEl.value, { immediatePersist: true }));
     bgAudioVolumeNumEl?.addEventListener('input', () => syncBgVol(bgAudioVolumeNumEl.value));
+    bgAudioVolumeNumEl?.addEventListener('change', () => syncBgVol(bgAudioVolumeNumEl.value, { immediatePersist: true }));
+    bgAudioVolumeNumEl?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        syncBgVol(bgAudioVolumeNumEl.value, { immediatePersist: true });
+    });
 
     bgAudioDuckEl?.addEventListener('change', () => {
         bgAudioDuck = !!bgAudioDuckEl.checked;
@@ -2376,8 +2711,7 @@ function setupVoiceSettings() {
         }
 
         persistPlaybackSettings();
-        renderNodePauseOverridesList(nodeId);
-        void updateVoiceSettingsForSelectedNode(nodeId);
+        void updateVoiceSettingsForSelectedNode(nodeId, { forceRender: true });
     });
 
     clearNodePauseOverrideBtn?.addEventListener('click', () => {
@@ -2385,8 +2719,13 @@ function setupVoiceSettings() {
         if (!nodeId) return;
         delete nodeExtraDelaySecByNode[nodeId];
         persistPlaybackSettings();
-        renderNodePauseOverridesList(nodeId);
-        void updateVoiceSettingsForSelectedNode(nodeId);
+        void updateVoiceSettingsForSelectedNode(nodeId, { forceRender: true });
+    });
+
+    nodePauseOverrideNum?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        applyNodePauseOverrideBtn?.click();
     });
 
     voiceRecBtn?.addEventListener('click', async () => {
@@ -2416,8 +2755,8 @@ function setupVoiceSettings() {
     });
 
     syncSettingsNodePicker(getSelectedNodeIdForSettings());
-    renderNodePauseOverridesList(getSelectedNodeIdForSettings());
-    updateVoiceSettingsForSelectedNode(getSelectedNodeIdForSettings());
+    renderNodePauseOverridesList(getSelectedNodeIdForSettings(), { force: true });
+    updateVoiceSettingsForSelectedNode(getSelectedNodeIdForSettings(), { forceRender: true });
     if (bgAudioStatusEl) {
         void (async () => {
             const hasFile = (await bgGetBlob()) ? true : false;
@@ -2429,12 +2768,13 @@ function setupVoiceSettings() {
 }
 
 // Called from updateRecentUrl() when node selection changes.
-async function updateVoiceSettingsForSelectedNode(nodeId) {
+async function updateVoiceSettingsForSelectedNode(nodeId, { forceRender = false } = {}) {
     syncSettingsNodePicker(nodeId);
     if (playbackSelectedNodeHint) {
         playbackSelectedNodeHint.textContent = nodeId ? `Recording and pause changes here only affect Node ${nodeId}.` : 'Selected node: none';
     }
     updateSettingsNodeContext(nodeId);
+    renderSettingsMiniNodeGraph(nodeId, { force: forceRender });
     if (nodePauseOverrideNum) {
         const customPause = getNodeCustomPauseSec(nodeId);
         nodePauseOverrideNum.value = String(customPause !== null ? customPause : getEffectiveNodePauseSec(nodeId));
@@ -2449,7 +2789,7 @@ async function updateVoiceSettingsForSelectedNode(nodeId) {
             nodePauseOverrideHint.textContent = `Node ${nodeId} currently uses the default pause of ${Math.max(0.5, Number(playbackBaseDelaySec) || 7)}s.`;
         }
     }
-    renderNodePauseOverridesList(nodeId);
+    renderNodePauseOverridesList(nodeId, { rebuildPickers: false, force: forceRender });
     await updateVoiceStatus(nodeId);
 }
 
@@ -2601,9 +2941,7 @@ async function loadSavedOrSharedGraphIntoEditor(code, { origin = 'saved', enable
     }
     if (lastSelectedNode === null) findAndSetInitialNode();
 
-    if (shared && typeof shared.topic === 'string') {
-        setGraphTopicFromExternal(shared.topic, `${origin}:${code}`);
-    }
+    setGraphTopicFromExternal(shared && typeof shared.topic === 'string' ? shared.topic : '', `${origin}:${code}`);
 
     applyRemoteMediaFromShare(shared);
 
@@ -2663,6 +3001,7 @@ async function loadSavedOrSharedGraphIntoEditor(code, { origin = 'saved', enable
     
     persistPlaybackSettings();
     if (typeof window._updatePlaybackModeUI === 'function') window._updatePlaybackModeUI();
+    markExplicitSaveBaseline();
 }
 
 function scheduleApiSave({ flush = false } = {}) {
@@ -2713,7 +3052,7 @@ function scheduleApiSave({ flush = false } = {}) {
         } catch (e) {
             console.warn("[scheduleApiSave] Background save failed:", e);
         }
-    }, 250);
+    }, 500);
 }
 
 function saveNodeData(options) {
@@ -2894,8 +3233,8 @@ function initNodes(count) {
         return;
     }
 
-    nodeGraph.innerHTML = ''; // Clear existing nodes
-    nodeSelector.innerHTML = ''; // Clear existing options
+    const nodeFragment = document.createDocumentFragment();
+    const optionFragment = document.createDocumentFragment();
 
     // Create nodes and selector options
     for (let i = 1; i <= count; i++) {
@@ -2904,30 +3243,33 @@ function initNodes(count) {
         node.className = 'node';
         node.setAttribute('data-node-id', i);
         node.addEventListener('click', () => handleNodeClick(i)); // Use specific handler
-        nodeGraph.appendChild(node);
+        nodeFragment.appendChild(node);
 
         // Ensure URL entry exists, default to empty string
         if (!Object.prototype.hasOwnProperty.call(nodeUrls, i)) {
             nodeUrls[i] = '';
         }
 
-        // Update visual status (connected/disconnected)
-        updateNodeStatus(i);
-
         // Create Selector Option
         const option = document.createElement('option');
         option.value = i;
         option.textContent = `Node ${i}`;
-        nodeSelector.appendChild(option);
+        optionFragment.appendChild(option);
 
+    }
+
+    nodeGraph.replaceChildren(nodeFragment);
+    nodeSelector.replaceChildren(optionFragment);
+    for (let i = 1; i <= count; i++) {
+        updateNodeStatus(i);
     }
 
     // Update connection line position after nodes are rendered
     // Use requestAnimationFrame to ensure layout is calculated
     requestAnimationFrame(() => updateConnectionLine(count));
-    rebuildSettingsNodePickers();
+    rebuildSettingsNodePickers({ force: true });
     syncSettingsNodePicker(getSelectedNodeIdForSettings());
-    renderNodePauseOverridesList(getSelectedNodeIdForSettings());
+    renderNodePauseOverridesList(getSelectedNodeIdForSettings(), { force: true });
 }
 
 /**
@@ -2964,14 +3306,15 @@ async function handleNodeClick(nodeId) {
             }
         }
 
-              // Just load the preview
+        // Update the embedded preview in parallel, but do not block the full desktop viewer/window.
         if (typeof loadUrlInViewer === 'function') {
-            try { await loadUrlInViewer(url, nodeId); } catch (_) { }
+            try { void loadUrlInViewer(url, nodeId); } catch (_) { }
         } else {
             console.warn("loadUrlInViewer function not available.");
         }
-        // Also open in best target
-        try { await openUrlInBestTarget(target, { title: `Node ${nodeId}` }); } catch (_) { }
+
+        // Open the full page immediately in the best available desktop target.
+        try { await openUrlInBestTarget(target, { title: `Node ${nodeId}`, nodeId }); } catch (_) { }
     } else {
         openNodeConfig(nodeId); // Open modal to set URL
     }
@@ -3111,7 +3454,7 @@ function clearUrlForNode(nodeId) {
 function updateNodeDisplay() {
     if (!nodeAssociationsDiv) return;
     rebuildSettingsNodePickers();
-    nodeAssociationsDiv.innerHTML = ''; // Clear previous list
+    const fragment = document.createDocumentFragment();
 
     for (let i = 1; i <= currentNodeCount; i++) {
         const div = document.createElement('div');
@@ -3136,7 +3479,7 @@ function updateNodeDisplay() {
                         alert('That local file is not available in this browser/device.');
                         return;
                     }
-                    await openUrlInBestTarget(resolved, { title: 'Local file preview' });
+                    await openUrlInBestTarget(resolved, { title: `Node ${i}`, nodeId: i });
                 });
                 div.appendChild(link);
             } else {
@@ -3147,6 +3490,11 @@ function updateNodeDisplay() {
                 // Display a shortened version if too long
                 link.textContent = url.length > 60 ? url.substring(0, 57) + '...' : url;
                 link.title = url; // Show full URL on hover
+                link.addEventListener('click', async (e) => {
+                    if (!getDesktopBridge()) return;
+                    e.preventDefault();
+                    await openUrlInBestTarget(url, { title: `Node ${i}`, nodeId: i });
+                });
                 div.appendChild(link);
             }
         } else {
@@ -3178,8 +3526,9 @@ function updateNodeDisplay() {
             // Alternatively, handleNodeClick(i) could open the URL directly
         });
 
-        nodeAssociationsDiv.appendChild(div);
+        fragment.appendChild(div);
     }
+    nodeAssociationsDiv.replaceChildren(fragment);
 }
 
 /**
@@ -3457,7 +3806,7 @@ function updateRecentUrl(nodeId, isPlayingHighlight = false) {
     let cursor = 'default';
 
     if (nodeId !== null && nodeId >= 1 && nodeId <= currentNodeCount) {
-        const url = nodeUrls[nodeId];
+        const url = getDisplayUrlForNode(nodeId);
         if (url && url.trim() !== '') {
             text = `Node ${nodeId}: ${displayTextForUrl(url)}`;
             title = displayTextForUrl(url); // Full text on hover
@@ -3468,7 +3817,7 @@ function updateRecentUrl(nodeId, isPlayingHighlight = false) {
                     alert('That local file is not available in this browser/device.');
                     return;
                 }
-                await openUrlInBestTarget(target, { title: `Node ${nodeId}` });
+                await openUrlInBestTarget(target, { title: `Node ${nodeId}`, nodeId });
             };
         } else {
             text = `Node ${nodeId}: No URL assigned`;
@@ -3498,37 +3847,86 @@ function updateRecentUrl(nodeId, isPlayingHighlight = false) {
 /**
  * Clears all URL associations from the nodes.
  */
-function clearNodeConnectionsInternal() {
-    let changed = false;
-    for (let i = 1; i <= currentNodeCount; i++) {
-        if (Object.prototype.hasOwnProperty.call(nodeUrls, i) && nodeUrls[i] !== '') {
-            nodeUrls[i] = '';
-            updateNodeStatus(i);
-            changed = true;
-        } else if (!Object.prototype.hasOwnProperty.call(nodeUrls, i)) {
-            nodeUrls[i] = '';
-        }
-        if (Object.prototype.hasOwnProperty.call(nodeCaptions, i)) {
-            delete nodeCaptions[i];
-            changed = true;
-        }
+function clearNodeConnectionsInternal({ resetGraph = false } = {}) {
+    for (const key of Object.keys(nodeUrls)) delete nodeUrls[key];
+    for (const key of Object.keys(nodeCaptions)) delete nodeCaptions[key];
+    nodeExtraDelaySecByNode = {};
+
+    if (resetGraph) {
+        remoteMedia = { background: null, voiceByNode: {}, filesByNode: {} };
+        currentNodeCount = DEFAULT_CLEAR_NODE_COUNT;
+        lastSelectedNode = currentNodeCount >= 1 ? 1 : null;
+        activeShareCode = null;
+        loadedFromSharedGraph = false;
+        currentShareAnalyticsContext = null;
+        currentSavedShareCode = null;
+        currentSavedShareUrl = null;
+        graphId = null;
+        desktopViewerState = { nodeId: null, url: '', title: '' };
+        clearExplicitSaveBaseline();
+        setGraphTopicFromExternal('', null);
+        updateUpdateSavedButton();
+
+        const scopedGraphIdKey = getScopedKey('graphId');
+        const scopedSnapshotKey = getScopedKey('graph_snapshot');
+        try { localStorage.removeItem(scopedGraphIdKey); } catch (_) { }
+        try { localStorage.removeItem(scopedSnapshotKey); } catch (_) { }
+        clearPendingGraphSync(currentUser);
     }
 
-    if (changed) {
-        updateNodeDisplay();
-        updateRecentUrl(lastSelectedNode);
-        saveNodeData();
-        console.log('All node connections cleared.');
-    } else {
-        console.log('No connections to clear.');
+    for (let i = 1; i <= currentNodeCount; i++) {
+        nodeUrls[i] = '';
     }
+
+    if (nodeCountInput) nodeCountInput.value = String(currentNodeCount);
+    initNodes(currentNodeCount);
+    updateNodeDisplay();
+    updateRecentUrl(lastSelectedNode);
+
+    if (resetGraph) {
+        if (typeof highlightPlayingNode === 'function') highlightPlayingNode(null);
+        if (typeof loadUrlInViewer === 'function') {
+            try { void loadUrlInViewer('', null); } catch (_) { }
+        }
+        console.log('Nodegraph reset to a fresh default state.');
+    }
+
+    saveNodeData();
 }
 
-function clearNodeConnections() {
+async function clearNodeConnections() {
     if (!requireSignedInForSharedRemix('clear or remix this shared graph')) return;
-    if (confirm('Are you sure you want to clear all URL connections? This cannot be undone.')) {
-        clearNodeConnectionsInternal();
+    flushPendingGraphTopicInput();
+
+    const hasContent = hasMeaningfulGraphContent();
+    const hasUnsavedChanges = hasUnsavedChangesSinceExplicitSave();
+
+    if (hasContent && hasUnsavedChanges) {
+        const saveBeforeClear = confirm('This nodegraph has unsaved changes. Press OK to save it before clearing, or Cancel if you want to decide whether to discard it.');
+        if (saveBeforeClear) {
+            try {
+                const saved = await persistCurrentGraphAsSaved({ preferUpdate: true, fallbackTopic: buildUntitledTopicLabel() });
+                if (!saved || !saved.ok) {
+                    alert('Unable to save this nodegraph before clearing. The graph was left unchanged.');
+                    return;
+                }
+            } catch (error) {
+                console.warn('Failed to save before clearing.', error);
+                alert('Unable to save this nodegraph before clearing. The graph was left unchanged.');
+                return;
+            }
+        } else {
+            const discard = confirm('Clear without saving? This will reset the topic, nodes, preview pane, and node associations back to a fresh 8-node graph.');
+            if (!discard) return;
+        }
+    } else if (hasContent) {
+        const message = currentSavedShareCode
+            ? 'Clear this editor and start from a fresh 8-node graph? Your saved copy will stay available in Saved Links.'
+            : 'Clear this editor and start from a fresh 8-node graph?';
+        if (!confirm(message)) return;
     }
+
+    clearNodeConnectionsInternal({ resetGraph: true });
 }
 
 function detectBrowserFamily() {
@@ -4245,7 +4643,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const dashboardList = document.getElementById('dashboardList');
     const dashboardDetail = document.getElementById('dashboardDetail');
     const topicInput = document.getElementById('topicInput');
-    topicInput?.addEventListener('input', () => setGraphTopicFromInput(topicInput.value));
+    topicInput?.addEventListener('input', () => scheduleGraphTopicInput(topicInput.value));
+    topicInput?.addEventListener('change', () => setGraphTopicFromInput(topicInput.value));
 
     // Perform checks *after* trying to get elements
     const requiredElements = {
@@ -4264,6 +4663,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.body.innerHTML = '<p style="color: red; padding: 20px;">Error: Core UI elements failed to load. Please check the HTML structure and element IDs, then reload the extension.</p>';
         return; // Stop execution if essential elements are missing
     }
+
+    const desktopBridge = getDesktopBridge();
+    if (desktopBridge && typeof desktopBridge.onViewerNavigation === 'function') {
+        desktopBridge.onViewerNavigation((payload) => {
+            setDesktopViewerState(payload);
+        });
+    }
+
+    const openAccountProfilePage = (event) => {
+        const destination = new URL('/account', window.location.origin).toString();
+        if (event) event.preventDefault();
+        window.location.assign(destination);
+    };
+
+    const accountLinks = Array.from(document.querySelectorAll('a.account-profile-link, #manageAccountLink a[href="/account"]'));
+    accountLinks.forEach((link) => {
+        link.href = new URL('/account', window.location.origin).toString();
+        link.addEventListener('click', (event) => {
+            if (!getDesktopBridge()) return;
+            openAccountProfilePage(event);
+        });
+    });
     initializePreviewPaneToggle();
     updateBrowserImportUi();
 
@@ -4293,17 +4714,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function renderSavedLinks(items) {
+        const renderSignature = buildSavedLinksRenderSignature(items);
+        if (renderSignature === savedLinksRenderSignature) return;
+        savedLinksRenderSignature = renderSignature;
+
         // 1. Populate the Multi-node QR Code dropdown (Priority 1)
         const qrSelect = document.getElementById('qrSavedGraphSelect');
         if (qrSelect) {
-            qrSelect.innerHTML = '<option value="">-- Select Saved Graph --</option>';
+            const qrFragment = document.createDocumentFragment();
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = '-- Select Saved Graph --';
+            qrFragment.appendChild(placeholder);
             
             // Add current active graph if shared
             if (currentSavedShareCode) {
                 const optCurrent = document.createElement('option');
                 optCurrent.value = currentSavedShareUrl || createSavedGraphUrl(currentSavedShareCode);
                 optCurrent.textContent = `★ Current: ${graphTopic || currentSavedShareCode}`;
-                qrSelect.appendChild(optCurrent);
+                qrFragment.appendChild(optCurrent);
             }
 
             // Extract codes/topics from Saved URL Nodes
@@ -4318,21 +4747,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const ns = it.namespace ? `[${it.namespace}] ` : '';
                     const label = it.topic ? `${it.topic} (${code})` : code;
                     opt.textContent = `${ns}${label}`;
-                    qrSelect.appendChild(opt);
+                    qrFragment.appendChild(opt);
                 });
                 console.log(`[QRGen] Dropdown populated with ${items.length} nodes from profile.`);
             }
+            qrSelect.replaceChildren(qrFragment);
         }
 
         // 2. Render the visible list in sidepanel (Priority 2)
         if (!savedLinks) return;
-        savedLinks.innerHTML = '';
+        const listFragment = document.createDocumentFragment();
 
         if (!items || items.length === 0) {
             const div = document.createElement('div');
             div.className = 'saved-links-empty';
             div.textContent = 'No saved node sets yet.';
-            savedLinks.appendChild(div);
+            savedLinks.replaceChildren(div);
             return;
         }
         for (const it of items) {
@@ -4417,8 +4847,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 wrap.appendChild(div);
             }
 
-            savedLinks.appendChild(wrap);
+            listFragment.appendChild(wrap);
         }
+        savedLinks.replaceChildren(listFragment);
     }
 
     function setBillingError(msg) {
@@ -4613,8 +5044,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function refreshSavedLinks() {
         try {
             const items = await apiJson('/api/v1/saved', { method: 'GET' });
-            renderSavedLinks(Array.isArray(items) ? items : []);
+            currentSavedLinksCache = Array.isArray(items) ? items : [];
+            renderSavedLinks(currentSavedLinksCache);
         } catch (_) {
+            currentSavedLinksCache = [];
             renderSavedLinks([]);
         }
         updateAccountProfileCard();
@@ -4719,8 +5152,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         graphTopicOrigin = null;
         graphTopic = '';
         currentSavedShareCode = null;
+        currentSavedShareUrl = null;
+        desktopViewerState = { nodeId: null, url: '', title: '' };
+        clearExplicitSaveBaseline();
         clearCachedAuthState();
-        
+
         window.location.reload();
     });
 
@@ -4770,6 +5206,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.addEventListener('online', () => {
         void processPendingCloudSync();
+        void refreshCloudBackedEditorState({ force: true });
+    });
+    window.addEventListener('focus', () => {
+        void refreshCloudBackedEditorState();
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            void refreshCloudBackedEditorState();
+        }
     });
 
 
@@ -4830,6 +5275,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         const restoredLastGraph = await restoreLastActiveGraphForSignedInUser();
         if (restoredLastGraph && currentUser) {
             await refreshSavedLinks();
+        } else if (currentUser && !hasMeaningfulGraphContent() && currentSavedLinksCache.length > 0 && currentSavedLinksCache[0].code) {
+            try {
+                await loadSavedOrSharedGraphIntoEditor(currentSavedLinksCache[0].code, {
+                    origin: 'saved',
+                    enableShareAnalytics: false,
+                    editableAsShared: false,
+                    shareUrl: currentSavedLinksCache[0].shareUrl || null,
+                });
+            } catch (error) {
+                console.warn('Unable to auto-load the most recent saved nodegraph.', error);
+            }
         }
     }
 
@@ -4838,6 +5294,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Controls
     document.getElementById('setNodeCountBtn')?.addEventListener('click', updateNodeCount);
+    nodeCountInput?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        updateNodeCount();
+    });
     document.getElementById('setNodeTimerBtn')?.addEventListener('click', () => {
         const input = document.getElementById('nodeTimer');
         if (!input) return;
@@ -4858,6 +5319,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         persistPlaybackSettings();
         console.log(`[Settings] Normal Mode set to ${val}s. Applied to Global Engine.`);
         alert(`Normal mode playback delay set to ${val} seconds.`);
+    });
+    document.getElementById('nodeTimer')?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        document.getElementById('setNodeTimerBtn')?.click();
     });
     document.getElementById('addManualBtn')?.addEventListener('click', openManualEntry);
     document.getElementById('addFileBtn')?.addEventListener('click', () => {
@@ -4937,9 +5403,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('shareBtn')?.addEventListener('click', async () => {
         if (!requireSignedInForSharedRemix('share your own version of this shared nodegraph')) return;
         try {
+            flushPendingGraphTopicInput();
             const exportSnapshot = buildNormalizedExportSnapshot();
             if (!exportSnapshot) {
                 alert('Add at least one loaded node URL before sharing.');
+                return;
+            }
+            const containsLocalFiles = Object.values(exportSnapshot.nodeUrls || {}).some((value) => isLocalFileUrl(value));
+            if (containsLocalFiles) {
+                alert('Local files become portable after you Save this nodegraph to your account. Save it first, then share the saved link so other devices can preview those files.');
                 return;
             }
             if (!confirmNormalizedExport('Sharing this nodegraph', exportSnapshot)) return;
@@ -4973,42 +5445,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
             if (!confirmNormalizedExport('Saving this nodegraph', exportSnapshot)) return;
-            const organizationId = saveAsSelect && saveAsSelect.value ? saveAsSelect.value : undefined;
-            const res = await saveNodegraphToAccount(exportSnapshot, {
-                organizationId,
-                topic: graphTopic || undefined,
-            });
+            const saved = await persistCurrentGraphAsSaved({ preferUpdate: false, fallbackTopic: buildUntitledTopicLabel() });
+            const res = saved && saved.result ? saved.result : null;
             if (res && res.queued) {
-                graphTopicOrigin = `saved:${res.code}`;
-                currentSavedShareCode = res.code;
-                currentSavedShareUrl = null;
-                writeLastActiveGraphForUser(res.code, { origin: 'saved', shareUrl: null });
-                updateUpdateSavedButton();
-                updateAccountProfileCard();
                 alert(res.message || 'Saved offline. Cynode will sync it when the backend is reachable again.');
                 return;
             }
             if (res && res.shareUrl) {
-                // Bind the current topic to this saved code so deleting it can clear the topic display.
-                if (res.code && typeof res.code === 'string') {
-                    graphTopicOrigin = `saved:${res.code}`;
-                    try { localStorage.setItem(GRAPH_TOPIC_ORIGIN_KEY, graphTopicOrigin); } catch (_) { }
-                    currentSavedShareCode = res.code;
-                    currentSavedShareUrl = res.shareUrl || createSavedGraphUrl(res.code);
-                    writeLastActiveGraphForUser(res.code, { origin: 'saved', shareUrl: currentSavedShareUrl });
-                    updateUpdateSavedButton();
-                }
-
-                // Best-effort: publish any voice/background audio to the saved short code so it works for anyone opening it.
-                if (res.code) {
-                    try { await uploadSavedMedia(res.code, exportSnapshot); } catch (_) { }
-                }
-
-                // Prepend to the list.
-                const existing = savedLinks ? Array.from(savedLinks.querySelectorAll('a.saved-link')).map(a => a.href) : [];
-                if (!existing.includes(res.shareUrl)) {
-                    await refreshSavedLinks();
-                }
                 try { await navigator.clipboard.writeText(res.shareUrl); } catch (_) { }
                 window.prompt('Saved link (copied if supported):', res.shareUrl);
             }
@@ -5027,24 +5470,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
             if (!confirmNormalizedExport('Updating this saved nodegraph', exportSnapshot)) return;
-            const res = await updateSavedNodegraphInAccount(currentSavedShareCode, exportSnapshot, {
-                topic: graphTopic || undefined,
-            });
+            const saved = await persistCurrentGraphAsSaved({ preferUpdate: true, fallbackTopic: buildUntitledTopicLabel() });
+            const res = saved && saved.result ? saved.result : null;
             if (res && res.queued) {
-                if (res.code && String(res.code).startsWith('offline_')) {
-                    currentSavedShareCode = res.code;
-                    graphTopicOrigin = `saved:${res.code}`;
-                    updateUpdateSavedButton();
-                }
-                updateAccountProfileCard();
                 alert(res.message || 'Saved changes queued offline. Cynode will sync them when the backend is reachable again.');
                 return;
             }
-            if (res && res.shareUrl) currentSavedShareUrl = res.shareUrl;
-            writeLastActiveGraphForUser(currentSavedShareCode, { origin: 'saved', shareUrl: currentSavedShareUrl });
-            try { await uploadSavedMedia(currentSavedShareCode, exportSnapshot); } catch (_) { }
             if (res && res.shareUrl) {
-                await refreshSavedLinks();
                 try { await navigator.clipboard.writeText(res.shareUrl); } catch (_) { }
                 window.prompt('Saved link updated (copied if supported):', res.shareUrl);
             }

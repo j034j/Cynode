@@ -1,6 +1,6 @@
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, BrowserWindow, ipcMain, shell, dialog, protocol, session } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, shell, dialog, protocol, session } = require('electron');
 
 const PROTOCOL = 'cynode';
 const APP_ID = 'com.cynode.desktop';
@@ -16,8 +16,186 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow = null;
 let viewerWindow = null;
+let viewerPageView = null;
 const secondaryWindows = new Set();
 let pendingProtocolUrl = null;
+let viewerState = {
+  nodeId: null,
+  url: '',
+  title: 'Cynode Viewer',
+  status: 'idle',
+  canGoBack: false,
+  canGoForward: false,
+};
+let viewerStageBounds = { x: 0, y: 62, width: 1200, height: 800 };
+
+function logViewer(message, extra) {
+  if (typeof extra === 'undefined') {
+    console.log(`[CynodeViewer] ${message}`);
+    return;
+  }
+  console.log(`[CynodeViewer] ${message}`, extra);
+}
+
+function sendViewerNavigationToMain(payload = {}) {
+  logViewer('Forwarding viewer navigation to main window.', payload);
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  const dispatch = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send('cynode-desktop:viewer-navigation', payload);
+  };
+
+  if (mainWindow.webContents.isLoadingMainFrame()) {
+    mainWindow.webContents.once('did-finish-load', dispatch);
+  } else {
+    dispatch();
+  }
+}
+
+function updateViewerState(patch = {}) {
+  viewerState = {
+    ...viewerState,
+    ...patch,
+  };
+  sendViewerNavigationToMain(viewerState);
+  if (viewerWindow && !viewerWindow.isDestroyed()) {
+    const dispatch = () => {
+      if (!viewerWindow || viewerWindow.isDestroyed()) return;
+      viewerWindow.webContents.send('cynode-viewer:state', viewerState);
+    };
+    if (viewerWindow.webContents.isLoadingMainFrame()) {
+      viewerWindow.webContents.once('did-finish-load', dispatch);
+    } else {
+      dispatch();
+    }
+  }
+}
+
+function syncViewerNavState() {
+  if (!viewerPageView || viewerPageView.webContents.isDestroyed()) return;
+  let canGoBack = false;
+  let canGoForward = false;
+  try {
+    canGoBack = viewerPageView.webContents.navigationHistory.canGoBack();
+    canGoForward = viewerPageView.webContents.navigationHistory.canGoForward();
+  } catch (_) {}
+  updateViewerState({ canGoBack, canGoForward });
+}
+
+function applyViewerPageBounds() {
+  if (!viewerWindow || viewerWindow.isDestroyed() || !viewerPageView) return;
+  const contentBounds = viewerWindow.getContentBounds();
+  const x = Math.max(0, Number(viewerStageBounds.x) || 0);
+  const y = Math.max(0, Number(viewerStageBounds.y) || 0);
+  const width = Math.max(0, Math.min(contentBounds.width - x, Number(viewerStageBounds.width) || 0));
+  const height = Math.max(0, Math.min(contentBounds.height - y, Number(viewerStageBounds.height) || 0));
+  viewerPageView.setBounds({ x, y, width, height });
+  viewerPageView.setVisible(Boolean(viewerState.url) && width > 0 && height > 0);
+  logViewer('Applied viewer page bounds.', { x, y, width, height });
+}
+
+function ensureViewerPageView() {
+  if (viewerPageView && !viewerPageView.webContents.isDestroyed()) {
+    return viewerPageView;
+  }
+
+  viewerPageView = new WebContentsView({
+    webPreferences: {
+      partition: WINDOW_PARTITION,
+      contextIsolation: true,
+      sandbox: false,
+      nodeIntegration: false,
+      webSecurity: true,
+    },
+  });
+
+  const pageContents = viewerPageView.webContents;
+  pageContents.setWindowOpenHandler(({ url }) => {
+    if (isSafeAppUrl(url)) {
+      logViewer('Viewer intercepted popup and will reuse the same page view.', { url });
+      openInAppViewer(url, { title: viewerState.title, nodeId: viewerState.nodeId });
+      return { action: 'deny' };
+    }
+    shell.openExternal(url).catch(() => {});
+    return { action: 'deny' };
+  });
+
+  pageContents.on('did-start-loading', () => {
+    logViewer('Viewer started loading.', { url: viewerState.url });
+    updateViewerState({ status: 'loading' });
+  });
+
+  pageContents.on('did-stop-loading', () => {
+    let loadedUrl = viewerState.url;
+    try {
+      const currentUrl = pageContents.getURL();
+      if (currentUrl) loadedUrl = currentUrl;
+    } catch (_) {}
+    logViewer('Viewer stopped loading.', { url: loadedUrl });
+    updateViewerState({ url: loadedUrl, status: 'loaded' });
+    syncViewerNavState();
+  });
+
+  pageContents.on('did-start-navigation', (_event, url, isInPlace, isMainFrame) => {
+    if (!isMainFrame) return;
+    logViewer('Viewer navigation started.', { url, isInPlace });
+    updateViewerState({ url: String(url || viewerState.url), status: 'loading' });
+  });
+
+  pageContents.on('did-redirect-navigation', (_event, url, isInPlace, isMainFrame) => {
+    if (!isMainFrame) return;
+    logViewer('Viewer navigation redirected.', { url, isInPlace });
+    updateViewerState({ url: String(url || viewerState.url), status: 'redirected' });
+  });
+
+  pageContents.on('did-navigate', (_event, url, httpResponseCode, httpStatusText) => {
+    logViewer('Viewer navigated.', { url, httpResponseCode, httpStatusText });
+    updateViewerState({ url: String(url || viewerState.url), status: 'navigated' });
+    syncViewerNavState();
+  });
+
+  pageContents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
+    if (!isMainFrame) return;
+    logViewer('Viewer navigated in page.', { url });
+    updateViewerState({ url: String(url || viewerState.url), status: 'navigated-in-page' });
+    syncViewerNavState();
+  });
+
+  pageContents.on('page-title-updated', (event, title) => {
+    if (!title) return;
+    logViewer('Viewer title updated.', { title });
+    updateViewerState({ title: String(title), status: 'title' });
+    try { event.preventDefault(); } catch (_) {}
+  });
+
+  pageContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3) return;
+    console.error('[CynodeViewer] Viewer failed to load.', {
+      errorCode,
+      errorDescription,
+      validatedURL,
+    });
+    updateViewerState({
+      url: validatedURL ? String(validatedURL) : viewerState.url,
+      status: 'error',
+      errorCode: typeof errorCode === 'number' ? errorCode : null,
+      errorDescription: errorDescription ? String(errorDescription) : '',
+    });
+    syncViewerNavState();
+  });
+
+  pageContents.on('render-process-gone', (_event, details) => {
+    console.error('[CynodeViewer] Viewer page render process exited.', details);
+  });
+
+  if (viewerWindow && !viewerWindow.isDestroyed()) {
+    viewerWindow.contentView.addChildView(viewerPageView);
+    applyViewerPageBounds();
+  }
+
+  return viewerPageView;
+}
 
 async function maybeResetDesktopWebCache() {
   const markerPath = path.join(app.getPath('userData'), 'desktop-web-cache-version.txt');
@@ -144,6 +322,8 @@ function createMainWindow() {
 function createViewerWindow() {
   if (viewerWindow && !viewerWindow.isDestroyed()) return viewerWindow;
 
+  logViewer('Creating viewer window.');
+
   viewerWindow = new BrowserWindow({
     width: 1480,
     height: 980,
@@ -159,39 +339,61 @@ function createViewerWindow() {
       contextIsolation: true,
       sandbox: false,
       nodeIntegration: false,
-      webviewTag: true,
       webSecurity: true,
     },
   });
 
+  viewerWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[CynodeViewer] Viewer shell render process exited.', details);
+  });
+
+  viewerWindow.webContents.on('did-finish-load', () => {
+    logViewer('Viewer shell finished loading.');
+    updateViewerState({});
+    applyViewerPageBounds();
+  });
+
+  viewerWindow.on('resize', () => {
+    applyViewerPageBounds();
+  });
+
+  ensureViewerPageView();
+  viewerPageView.setVisible(false);
+  void viewerWindow.loadFile(path.join(__dirname, 'viewer.html'));
+
   viewerWindow.on('closed', () => {
+    logViewer('Viewer window closed.');
+    viewerState = {
+      nodeId: null,
+      url: '',
+      title: 'Cynode Viewer',
+      status: 'closed',
+      canGoBack: false,
+      canGoForward: false,
+    };
+    sendViewerNavigationToMain(viewerState);
+    if (viewerPageView && !viewerPageView.webContents.isDestroyed()) {
+      try { viewerPageView.webContents.close(); } catch (_) {}
+    }
+    viewerPageView = null;
     viewerWindow = null;
   });
 
-  void viewerWindow.loadFile(path.join(__dirname, 'viewer.html'));
   return viewerWindow;
-}
-
-function sendViewerCommand(command, payload = {}) {
-  const win = createViewerWindow();
-  const dispatch = () => {
-    if (!win || win.isDestroyed()) return;
-    win.webContents.send(command, payload);
-  };
-
-  if (win.webContents.isLoadingMainFrame()) {
-    win.webContents.once('did-finish-load', dispatch);
-  } else {
-    dispatch();
-  }
-
-  return win;
 }
 
 function openInAppViewer(targetUrl, options = {}) {
   if (!isSafeAppUrl(targetUrl)) {
     throw new Error('unsupported_url');
   }
+
+  const nextNodeId = Number(options.nodeId);
+  const nextTitle = options.title ? String(options.title) : 'Cynode Viewer';
+  logViewer('openInAppViewer called.', {
+    url: String(targetUrl),
+    title: nextTitle,
+    nodeId: Number.isFinite(nextNodeId) ? nextNodeId : null,
+  });
 
   // Ensure viewer partition has current session cookie available.
   (async () => {
@@ -213,6 +415,13 @@ function openInAppViewer(targetUrl, options = {}) {
           secure: Boolean(sid.secure),
           expirationDate: sid.expirationDate || Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
         });
+        logViewer('Viewer session cookie refreshed from shared partition.', {
+          domain: sid.domain || new URL(startUrl).hostname,
+          secure: Boolean(sid.secure),
+          httpOnly: Boolean(sid.httpOnly),
+        });
+      } else {
+        logViewer('No existing sid cookie was found for viewer sync.', { startUrl });
       }
     } catch (err) {
       // Non-fatal, continue opening viewer even if cookie sync fails.
@@ -220,10 +429,20 @@ function openInAppViewer(targetUrl, options = {}) {
     }
   })();
 
-  const win = sendViewerCommand('cynode-viewer:open-url', {
+  const win = createViewerWindow();
+  updateViewerState({
+    nodeId: Number.isFinite(nextNodeId) ? nextNodeId : null,
     url: String(targetUrl),
-    title: options.title ? String(options.title) : 'Cynode Viewer',
+    title: nextTitle,
+    status: 'requested',
+    errorCode: null,
+    errorDescription: '',
   });
+  win.setTitle(nextTitle);
+  const pageView = ensureViewerPageView();
+  pageView.setVisible(true);
+  applyViewerPageBounds();
+  void pageView.webContents.loadURL(String(targetUrl));
 
   if (win.isMinimized()) win.restore();
   win.show();
@@ -375,8 +594,58 @@ ipcMain.handle('cynode-desktop:open-in-app-viewer', async (_event, payload) => {
   }
   openInAppViewer(targetUrl, {
     title: payload && payload.title ? String(payload.title) : 'Cynode Viewer',
+    nodeId: payload && Number.isFinite(Number(payload.nodeId)) ? Number(payload.nodeId) : null,
   });
   return { ok: true };
+});
+
+ipcMain.on('cynode-viewer:command', (_event, payload) => {
+  const command = payload && payload.command ? String(payload.command) : '';
+  const pageContents = viewerPageView && !viewerPageView.webContents.isDestroyed()
+    ? viewerPageView.webContents
+    : null;
+  if (!pageContents) return;
+
+  if (command === 'back') {
+    try {
+      if (pageContents.navigationHistory.canGoBack()) pageContents.navigationHistory.goBack();
+    } catch (_) {}
+    return;
+  }
+  if (command === 'forward') {
+    try {
+      if (pageContents.navigationHistory.canGoForward()) pageContents.navigationHistory.goForward();
+    } catch (_) {}
+    return;
+  }
+  if (command === 'refresh') {
+    try { pageContents.reload(); } catch (_) {}
+    return;
+  }
+  if (command === 'go') {
+    const targetUrl = payload && payload.url ? String(payload.url) : '';
+    if (!isSafeAppUrl(targetUrl)) return;
+    openInAppViewer(targetUrl, {
+      title: viewerState.title || 'Cynode Viewer',
+      nodeId: viewerState.nodeId,
+    });
+    return;
+  }
+  if (command === 'open-external') {
+    const targetUrl = payload && payload.url ? String(payload.url) : viewerState.url;
+    if (!isSafeAppUrl(targetUrl)) return;
+    void shell.openExternal(targetUrl);
+  }
+});
+
+ipcMain.on('cynode-viewer:set-stage-bounds', (_event, bounds) => {
+  viewerStageBounds = {
+    x: Math.max(0, Number(bounds && bounds.x) || 0),
+    y: Math.max(0, Number(bounds && bounds.y) || 0),
+    width: Math.max(0, Number(bounds && bounds.width) || 0),
+    height: Math.max(0, Number(bounds && bounds.height) || 0),
+  };
+  applyViewerPageBounds();
 });
 
 ipcMain.handle('cynode-desktop:open-secondary-window', async (_event, payload) => {
