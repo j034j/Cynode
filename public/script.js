@@ -130,10 +130,16 @@ async function openUrlInBestTarget(url, options = {}) {
 async function launchDesktopProtocolUrl(url, title = 'Cynode View') {
     const targetUrl = String(url || '');
     if (!/^(https?:)\/\//i.test(targetUrl)) return false;
+    const appOrigin = typeof window !== 'undefined' && window.location && window.location.origin
+        ? `${window.location.origin}/`
+        : '';
 
     let sessionId = null;
     try {
-        const res = await fetch('/api/v1/auth/session-id');
+        const res = await fetch('/api/v1/auth/session-id', {
+            credentials: 'include',
+            cache: 'no-store',
+        });
         const data = await res.json();
         if (data && data.sessionId) sessionId = data.sessionId;
     } catch (_) {
@@ -141,6 +147,9 @@ async function launchDesktopProtocolUrl(url, title = 'Cynode View') {
     }
 
     let protocolUrl = `cynode://open?url=${encodeURIComponent(targetUrl)}&title=${encodeURIComponent(String(title || 'Cynode View'))}`;
+    if (appOrigin) {
+        protocolUrl += `&appOrigin=${encodeURIComponent(appOrigin)}`;
+    }
     if (sessionId) {
         protocolUrl += `&sid=${encodeURIComponent(sessionId)}`;
     }
@@ -1326,14 +1335,10 @@ function saveNodeDataLegacy() {
 }
 
 function getApiBase() {
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return ''; // Localhost uses relative paths
-    }
-    // Desktop check (if running in Electron)
-    if (navigator.userAgent.toLowerCase().includes('electron')) {
-        return 'https://cynode.vercel.app';
-    }
-    // Default to current origin for web/PWA
+    // Always use the origin the app was actually loaded from.
+    // The previous Electron-specific hardcoded Vercel origin split desktop auth
+    // away from the active deployment and broke session persistence/inheritance
+    // for non-localhost environments.
     return '';
 }
 
@@ -1355,6 +1360,11 @@ async function apiJson(path, options) {
     if (hasBody) headers.set('content-type', 'application/json');
     else headers.delete('content-type');
     init.headers = headers;
+    // Keep account/session requests credentialed across web, PWA, and desktop.
+    // `include` is safe for same-origin requests and prevents silent auth drops
+    // when the app is running in a different browser context.
+    if (!init.credentials) init.credentials = 'include';
+    if (!init.cache) init.cache = 'no-store';
 
     let res;
     try {
@@ -1377,8 +1387,6 @@ async function apiJson(path, options) {
         if (json && json.user) {
             writeCachedMe(json);
             setOfflineSessionUser(json.user);
-        } else {
-            clearCachedAuthState();
         }
     } else if (path.includes('/api/v1/logout')) {
         clearCachedAuthState();
@@ -1393,7 +1401,8 @@ async function apiUpload(path, formData) {
     const res = await fetch(fullPath, {
         method: 'POST',
         body: formData,
-        credentials: 'same-origin',
+        credentials: 'include',
+        cache: 'no-store',
     });
     if (!res.ok) {
         const text = await res.text().catch(() => '');
@@ -4671,19 +4680,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    const openAccountProfilePage = (event) => {
-        const destination = new URL('/account', window.location.origin).toString();
-        if (event) event.preventDefault();
-        window.location.assign(destination);
-    };
-
     const accountLinks = Array.from(document.querySelectorAll('a.account-profile-link, #manageAccountLink a[href="/account"]'));
     accountLinks.forEach((link) => {
         link.href = new URL('/account', window.location.origin).toString();
-        link.addEventListener('click', (event) => {
-            if (!getDesktopBridge()) return;
-            openAccountProfilePage(event);
-        });
     });
     initializePreviewPaneToggle();
     updateBrowserImportUi();

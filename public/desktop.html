@@ -71,7 +71,8 @@
   </div>
   <script>
     (function () {
-      const sampleUrl = `cynode://open?url=${encodeURIComponent(window.location.origin + '/')}&title=${encodeURIComponent('Cynode Desktop')}`;
+      const appOrigin = `${window.location.origin}/`;
+      const sampleUrl = `cynode://open?url=${encodeURIComponent(appOrigin)}&title=${encodeURIComponent('Cynode Desktop')}&appOrigin=${encodeURIComponent(appOrigin)}`;
       const pre = document.getElementById('desktopLaunchUrl');
       const status = document.getElementById('desktopLaunchStatus');
       if (pre) pre.textContent = sampleUrl;
@@ -86,7 +87,10 @@
 
         let sessionId = null;
         try {
-          const res = await fetch('/api/v1/auth/session-id');
+          const res = await fetch('/api/v1/auth/session-id', {
+            credentials: 'include',
+            cache: 'no-store',
+          });
           const data = await res.json();
           if (data && data.sessionId) sessionId = data.sessionId;
         } catch (_) {}

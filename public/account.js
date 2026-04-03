@@ -138,9 +138,13 @@ function setFormsDisabled(disabled) {
 }
 
 async function apiJson(url, options = {}) {
+    const init = { ...options };
+    if (!init.credentials) init.credentials = 'include';
+    if (!init.cache) init.cache = 'no-store';
+
     let res;
     try {
-        res = await fetch(url, options);
+        res = await fetch(url, init);
     } catch (error) {
         if (url.includes('/api/v1/me')) {
             const cached = readCachedMe();

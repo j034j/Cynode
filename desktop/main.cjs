@@ -8,6 +8,7 @@ const DEFAULT_DEV_URL = 'http://127.0.0.1:3001/';
 const DEFAULT_REMOTE_URL = 'https://cynode.vercel.app/';
 const WINDOW_PARTITION = 'persist:cynode-desktop';
 const DESKTOP_WEB_CACHE_VERSION = 'desktop-web-cache-v2';
+const DESKTOP_START_URL_VERSION = 'desktop-start-url-v1';
 
 // Register cynode as a privileged scheme to ensure it works correctly in the browser context
 protocol.registerSchemesAsPrivileged([
@@ -29,12 +30,64 @@ let viewerState = {
 };
 let viewerStageBounds = { x: 0, y: 62, width: 1200, height: 800 };
 
+function normalizeAppUrl(value) {
+  if (!isSafeAppUrl(value)) return '';
+  try {
+    const parsed = new URL(String(value));
+    parsed.hash = '';
+    if (!parsed.pathname || parsed.pathname === '') parsed.pathname = '/';
+    return parsed.toString();
+  } catch (_) {
+    return '';
+  }
+}
+
+function getDesktopStartUrlMarkerPath() {
+  try {
+    if (!app.isReady()) return '';
+    return path.join(app.getPath('userData'), `${DESKTOP_START_URL_VERSION}.txt`);
+  } catch (_) {
+    return '';
+  }
+}
+
+function readStoredStartUrl() {
+  const markerPath = getDesktopStartUrlMarkerPath();
+  if (!markerPath) return '';
+  try {
+    return normalizeAppUrl(fs.readFileSync(markerPath, 'utf8').trim());
+  } catch (_) {
+    return '';
+  }
+}
+
+function writeStoredStartUrl(value) {
+  const markerPath = getDesktopStartUrlMarkerPath();
+  const normalized = normalizeAppUrl(value);
+  if (!markerPath || !normalized) return false;
+  try {
+    fs.writeFileSync(markerPath, `${normalized}\n`, 'utf8');
+    console.log(`[CynodeDesktop] Stored preferred start URL: ${normalized}`);
+    return true;
+  } catch (error) {
+    console.warn('[CynodeDesktop] Failed to store preferred start URL.', error);
+    return false;
+  }
+}
+
 function logViewer(message, extra) {
   if (typeof extra === 'undefined') {
     console.log(`[CynodeViewer] ${message}`);
     return;
   }
   console.log(`[CynodeViewer] ${message}`, extra);
+}
+
+function logProtocolError(context, error, extra = {}) {
+  console.error(`[CynodeDesktop] ${context}`, {
+    ...extra,
+    message: String(error && error.message ? error.message : error),
+  });
 }
 
 function sendViewerNavigationToMain(payload = {}) {
@@ -235,7 +288,17 @@ function isSafeAppUrl(value) {
 function resolveStartUrl() {
   const configuredUrl = process.env.CYNODE_DESKTOP_START_URL;
   if (isSafeAppUrl(configuredUrl)) {
-    return configuredUrl;
+    return normalizeAppUrl(configuredUrl);
+  }
+
+  const appBaseUrl = process.env.APP_BASE_URL;
+  if (isSafeAppUrl(appBaseUrl)) {
+    return normalizeAppUrl(appBaseUrl);
+  }
+
+  const storedUrl = readStoredStartUrl();
+  if (storedUrl) {
+    return storedUrl;
   }
 
   if (app.isPackaged) {
@@ -272,9 +335,17 @@ function attachWindowOpenHandler(win) {
 }
 
 async function loadIntoWindow(win, targetUrl) {
+  if (!win || win.isDestroyed()) return;
   try {
     await win.loadURL(targetUrl);
   } catch (error) {
+    if (!win || win.isDestroyed()) {
+      console.warn('[CynodeDesktop] Skipping fallback page because target window was destroyed.', {
+        targetUrl,
+        message: String(error && error.message ? error.message : error),
+      });
+      return;
+    }
     const helpText = app.isPackaged
       ? 'Check your internet connection, then reopen Cynode Desktop. If you use a self-hosted Cynode deployment, set CYNODE_DESKTOP_START_URL before launching the app.'
       : 'Start the Cynode server locally or set CYNODE_DESKTOP_START_URL to your deployed web app URL before launching the desktop app.';
@@ -284,7 +355,15 @@ async function loadIntoWindow(win, targetUrl) {
       `<p>${helpText}</p>`,
       `<pre>${String(error && error.message ? error.message : error)}</pre>`,
     ].join('');
-    await win.loadURL(`data:text/html,${encodeURIComponent(message)}`);
+    try {
+      if (!win.isDestroyed()) {
+        await win.loadURL(`data:text/html,${encodeURIComponent(message)}`);
+      }
+    } catch (fallbackError) {
+      if (win && !win.isDestroyed()) {
+        console.error('[CynodeDesktop] Failed to load fallback error page.', fallbackError);
+      }
+    }
   }
 }
 
@@ -311,6 +390,14 @@ function createMainWindow() {
   });
 
   attachWindowOpenHandler(mainWindow);
+  mainWindow.webContents.on('did-navigate', (_event, url) => {
+    const normalized = normalizeAppUrl(url);
+    if (normalized) writeStoredStartUrl(normalized);
+  });
+  mainWindow.webContents.on('did-navigate-in-page', (_event, url) => {
+    const normalized = normalizeAppUrl(url);
+    if (normalized) writeStoredStartUrl(normalized);
+  });
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -442,7 +529,9 @@ function openInAppViewer(targetUrl, options = {}) {
   const pageView = ensureViewerPageView();
   pageView.setVisible(true);
   applyViewerPageBounds();
-  void pageView.webContents.loadURL(String(targetUrl));
+  void pageView.webContents.loadURL(String(targetUrl)).catch((error) => {
+    logProtocolError('Viewer page load failed.', error, { targetUrl: String(targetUrl) });
+  });
 
   if (win.isMinimized()) win.restore();
   win.show();
@@ -508,6 +597,11 @@ async function handleProtocolUrl(rawUrl) {
   const targetUrl = searchParams.get('url');
   const title = searchParams.get('title') || 'Cynode View';
   const sessionId = searchParams.get('sid');
+  const appOrigin = normalizeAppUrl(searchParams.get('appOrigin') || searchParams.get('origin') || '');
+
+  if (appOrigin) {
+    writeStoredStartUrl(appOrigin);
+  }
 
   if (sessionId) {
     try {
@@ -526,7 +620,23 @@ async function handleProtocolUrl(rawUrl) {
         expirationDate: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
       });
       console.log('Inherited session from deep link.');
-      if (mainWindow) mainWindow.reload();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        const nextStartUrl = resolveStartUrl();
+        const currentUrl = mainWindow.webContents.getURL();
+        const currentOrigin = normalizeAppUrl(currentUrl);
+        const nextOrigin = normalizeAppUrl(nextStartUrl);
+        try {
+          if (!currentOrigin || (nextOrigin && new URL(currentOrigin).origin !== new URL(nextOrigin).origin)) {
+            await loadIntoWindow(mainWindow, nextStartUrl);
+          } else if (!mainWindow.isDestroyed()) {
+            mainWindow.reload();
+          }
+        } catch (error) {
+          logProtocolError('Refreshing main window after inherited session failed.', error, {
+            nextStartUrl,
+          });
+        }
+      }
     } catch (err) {
       console.error('Failed to set inherited session cookie:', err);
     }
@@ -545,7 +655,11 @@ if (!hasSingleInstanceLock) {
 } else {
   app.on('second-instance', (_event, argv) => {
     const protocolArg = argv.find((arg) => typeof arg === 'string' && arg.startsWith(`${PROTOCOL}://`));
-    if (protocolArg) handleProtocolUrl(protocolArg);
+    if (protocolArg) {
+      void handleProtocolUrl(protocolArg).catch((error) => {
+        logProtocolError('Handling second-instance protocol URL failed.', error, { protocolArg });
+      });
+    }
     else focusMainWindow();
   });
 }
@@ -556,7 +670,9 @@ app.on('open-url', (event, url) => {
     pendingProtocolUrl = url;
     return;
   }
-  handleProtocolUrl(url);
+  void handleProtocolUrl(url).catch((error) => {
+    logProtocolError('Handling open-url protocol event failed.', error, { url });
+  });
 });
 
 app.whenReady().then(async () => {
@@ -566,7 +682,9 @@ app.whenReady().then(async () => {
   await maybeResetDesktopWebCache();
   createMainWindow();
   if (pendingProtocolUrl) {
-    handleProtocolUrl(pendingProtocolUrl);
+    void handleProtocolUrl(pendingProtocolUrl).catch((error) => {
+      logProtocolError('Handling pending protocol URL failed.', error, { protocolArg: pendingProtocolUrl });
+    });
     pendingProtocolUrl = null;
   }
 
@@ -676,7 +794,15 @@ ipcMain.handle('cynode-desktop:launch-protocol', async (_event, payload) => {
     throw new Error('unsupported_url');
   }
   const title = payload && payload.title ? String(payload.title) : 'Cynode View';
-  const launchUrl = `${PROTOCOL}://open?url=${encodeURIComponent(targetUrl)}&title=${encodeURIComponent(title)}`;
+  const appOrigin = normalizeAppUrl(payload && payload.appOrigin ? String(payload.appOrigin) : '');
+  const sid = payload && payload.sid ? String(payload.sid) : '';
+  let launchUrl = `${PROTOCOL}://open?url=${encodeURIComponent(targetUrl)}&title=${encodeURIComponent(title)}`;
+  if (appOrigin) {
+    launchUrl += `&appOrigin=${encodeURIComponent(appOrigin)}`;
+  }
+  if (sid) {
+    launchUrl += `&sid=${encodeURIComponent(sid)}`;
+  }
   await shell.openExternal(launchUrl);
   return { ok: true, launchUrl };
 });
