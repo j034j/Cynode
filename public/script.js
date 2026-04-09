@@ -4776,10 +4776,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    const accountLinks = Array.from(document.querySelectorAll('a.account-profile-link, #manageAccountLink a[href="/account"]'));
-    accountLinks.forEach((link) => {
-        link.href = new URL('/account', window.location.origin).toString();
-    });
     initializePreviewPaneToggle();
     updateBrowserImportUi();
 

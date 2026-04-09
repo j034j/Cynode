@@ -41,6 +41,10 @@
             "dest": "/analytics.html"
         },
         {
+            "src": "/account",
+            "dest": "/account.html"
+        },
+        {
             "src": "/(.*)",
             "dest": "/index.html"
         }
