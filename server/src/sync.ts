@@ -17,14 +17,14 @@ function isRemoteDatabaseUrl(rawUrl?: string | null): boolean {
 
 function getRemotePrisma(): PrismaClient | null {
   if (remotePrisma) return remotePrisma;
-  
+
   const configuredUrl = process.env.DATABASE_URL;
   const url = process.env.TURSO_DATABASE_URL || (isRemoteDatabaseUrl(configuredUrl) ? configuredUrl : undefined);
   const authToken = process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN;
 
   // Allow remote Prisma initialization on Vercel as long as the TURSO envs are present.
   if (!url || !authToken) return null;
-  
+
   try {
     const adapter = new PrismaLibSQL({ url, authToken });
     remotePrisma = new PrismaClient({ adapter: adapter as any });
@@ -35,86 +35,312 @@ function getRemotePrisma(): PrismaClient | null {
   }
 }
 
+async function syncUserRecord(
+  target: PrismaClient,
+  user: {
+    id: string;
+    handle: string;
+    email: string | null;
+    displayName: string | null;
+    avatarUrl: string | null;
+    passwordHash: string | null;
+  },
+) {
+  await target.user.upsert({
+    where: { id: user.id },
+    update: {
+      handle: user.handle,
+      email: user.email,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      passwordHash: user.passwordHash,
+    },
+    create: {
+      id: user.id,
+      handle: user.handle,
+      email: user.email,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      passwordHash: user.passwordHash,
+    },
+  });
+}
+
+async function syncUserSubscription(
+  target: PrismaClient,
+  subscription:
+    | {
+        userId: string;
+        provider: string;
+        planKey: string;
+        status: string;
+        providerCustomerId: string | null;
+        providerSubscriptionId: string | null;
+        currentPeriodEnd: Date | null;
+        cancelAtPeriodEnd: boolean;
+      }
+    | null
+    | undefined,
+) {
+  if (!subscription) return;
+  await target.userSubscription.upsert({
+    where: { userId: subscription.userId },
+    update: {
+      provider: subscription.provider,
+      planKey: subscription.planKey,
+      status: subscription.status,
+      providerCustomerId: subscription.providerCustomerId,
+      providerSubscriptionId: subscription.providerSubscriptionId,
+      currentPeriodEnd: subscription.currentPeriodEnd,
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    },
+    create: {
+      userId: subscription.userId,
+      provider: subscription.provider,
+      planKey: subscription.planKey,
+      status: subscription.status,
+      providerCustomerId: subscription.providerCustomerId,
+      providerSubscriptionId: subscription.providerSubscriptionId,
+      currentPeriodEnd: subscription.currentPeriodEnd,
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    },
+  });
+}
+
+async function syncMembershipBundles(
+  target: PrismaClient,
+  memberships: Array<{
+    userId: string;
+    organizationId: string;
+    role: string;
+    organization: {
+      id: string;
+      name: string;
+      slug: string;
+      customDomain: string | null;
+      createdByUserId: string | null;
+      subscription?: {
+        organizationId: string;
+        provider: string;
+        planKey: string;
+        status: string;
+        providerCustomerId: string | null;
+        providerSubscriptionId: string | null;
+        currentPeriodEnd: Date | null;
+        cancelAtPeriodEnd: boolean;
+      } | null;
+    };
+  }>,
+) {
+  for (const membership of memberships) {
+    await target.organization.upsert({
+      where: { id: membership.organization.id },
+      update: {
+        name: membership.organization.name,
+        slug: membership.organization.slug,
+        customDomain: membership.organization.customDomain,
+        createdByUserId: membership.organization.createdByUserId,
+      },
+      create: {
+        id: membership.organization.id,
+        name: membership.organization.name,
+        slug: membership.organization.slug,
+        customDomain: membership.organization.customDomain,
+        createdByUserId: membership.organization.createdByUserId,
+      },
+    });
+
+    if (membership.organization.subscription) {
+      const sub = membership.organization.subscription;
+      await target.subscription.upsert({
+        where: { organizationId: sub.organizationId },
+        update: {
+          provider: sub.provider,
+          planKey: sub.planKey,
+          status: sub.status,
+          providerCustomerId: sub.providerCustomerId,
+          providerSubscriptionId: sub.providerSubscriptionId,
+          currentPeriodEnd: sub.currentPeriodEnd,
+          cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+        },
+        create: {
+          organizationId: sub.organizationId,
+          provider: sub.provider,
+          planKey: sub.planKey,
+          status: sub.status,
+          providerCustomerId: sub.providerCustomerId,
+          providerSubscriptionId: sub.providerSubscriptionId,
+          currentPeriodEnd: sub.currentPeriodEnd,
+          cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+        },
+      });
+    }
+
+    await target.membership.upsert({
+      where: {
+        userId_organizationId: {
+          userId: membership.userId,
+          organizationId: membership.organizationId,
+        },
+      },
+      update: { role: membership.role },
+      create: {
+        userId: membership.userId,
+        organizationId: membership.organizationId,
+        role: membership.role,
+      },
+    });
+  }
+}
+
+async function syncGraphWithNodes(
+  target: PrismaClient,
+  graph: {
+    id: string;
+    nodeCount: number;
+    lastSelectedNode: number | null;
+    updatedAt?: Date | null;
+    nodes: Array<{
+      id: string;
+      graphId: string;
+      index: number;
+      url: string | null;
+      title: string | null;
+      caption: string | null;
+      pauseSec: number | null;
+      updatedAt?: Date | null;
+    }>;
+  },
+) {
+  await target.graph.upsert({
+    where: { id: graph.id },
+    update: {
+      nodeCount: graph.nodeCount,
+      lastSelectedNode: graph.lastSelectedNode,
+    },
+    create: {
+      id: graph.id,
+      nodeCount: graph.nodeCount,
+      lastSelectedNode: graph.lastSelectedNode,
+    },
+  });
+
+  const nodeIndexes = graph.nodes.map((node) => node.index);
+  if (nodeIndexes.length > 0) {
+    await target.node.deleteMany({
+      where: {
+        graphId: graph.id,
+        index: { notIn: nodeIndexes },
+      },
+    });
+  } else {
+    await target.node.deleteMany({ where: { graphId: graph.id } });
+  }
+
+  for (const node of graph.nodes) {
+    await target.node.upsert({
+      where: { graphId_index: { graphId: graph.id, index: node.index } },
+      update: {
+        url: node.url,
+        title: node.title,
+        caption: node.caption,
+        pauseSec: node.pauseSec,
+      },
+      create: {
+        id: node.id,
+        graphId: node.graphId,
+        index: node.index,
+        url: node.url,
+        title: node.title,
+        caption: node.caption,
+        pauseSec: node.pauseSec,
+      },
+    });
+  }
+}
+
+async function syncShares(
+  target: PrismaClient,
+  shares: Array<{
+    code: string;
+    graphId: string;
+    createdByUserId: string | null;
+    organizationId: string | null;
+    saved: boolean;
+    topic: string | null;
+    graph: {
+      id: string;
+      nodeCount: number;
+      lastSelectedNode: number | null;
+      updatedAt?: Date | null;
+      nodes: Array<{
+        id: string;
+        graphId: string;
+        index: number;
+        url: string | null;
+        title: string | null;
+        caption: string | null;
+        pauseSec: number | null;
+        updatedAt?: Date | null;
+      }>;
+    };
+  }>,
+) {
+  for (const share of shares) {
+    await syncGraphWithNodes(target, share.graph);
+    await target.share.upsert({
+      where: { code: share.code },
+      update: {
+        graphId: share.graphId,
+        createdByUserId: share.createdByUserId,
+        organizationId: share.organizationId,
+        saved: share.saved,
+        topic: share.topic,
+      },
+      create: {
+        code: share.code,
+        graphId: share.graphId,
+        createdByUserId: share.createdByUserId,
+        organizationId: share.organizationId,
+        saved: share.saved,
+        topic: share.topic,
+      },
+    });
+  }
+}
+
 export async function pushUserWorkToCloud(userId: string) {
   const remote = getRemotePrisma();
   const local = await getPrisma();
   if (!remote || !local) return;
 
   try {
-    const user = await local.user.findUnique({ where: { id: userId } });
+    const user = await local.user.findUnique({
+      where: { id: userId },
+      include: {
+        subscription: true,
+        memberships: {
+          include: { organization: { include: { subscription: true } } },
+        },
+      },
+    });
     if (user) {
-      // Check remote freshness: if remote has a newer updatedAt, skip overwriting.
       const remoteUser = await remote.user.findUnique({ where: { id: userId } });
       if (remoteUser && remoteUser.updatedAt && user.updatedAt && remoteUser.updatedAt > user.updatedAt) {
         console.log(`[Sync] Skipping user upsert for ${userId}: remote is fresher`);
       } else {
-        await remote.user.upsert({
-          where: { id: userId },
-          update: { handle: user.handle, email: user.email, displayName: user.displayName, avatarUrl: user.avatarUrl, passwordHash: user.passwordHash },
-          create: { 
-            id: user.id,
-            handle: user.handle,
-            email: user.email,
-            displayName: user.displayName,
-            avatarUrl: user.avatarUrl,
-            passwordHash: user.passwordHash
-          }
-        });
+        await syncUserRecord(remote, user);
       }
+      await syncUserSubscription(remote, user.subscription);
+      await syncMembershipBundles(remote, user.memberships);
     }
 
     const shares = await local.share.findMany({
       where: { createdByUserId: userId },
-      include: { graph: { include: { nodes: true } } }
+      include: { graph: { include: { nodes: true } } },
     });
 
-    for (const share of shares) {
-      // Graph: only upsert if local is newer than remote (if remote exists)
-      const remoteGraph = await remote.graph.findUnique({ where: { id: share.graph.id } });
-      if (remoteGraph && remoteGraph.updatedAt && share.graph.updatedAt && remoteGraph.updatedAt > share.graph.updatedAt) {
-        console.log(`[Sync] Skipping graph upsert for ${share.graph.id}: remote is fresher`);
-      } else {
-        await remote.graph.upsert({
-          where: { id: share.graph.id },
-          update: { nodeCount: share.graph.nodeCount, lastSelectedNode: share.graph.lastSelectedNode },
-          create: { id: share.graph.id, nodeCount: share.graph.nodeCount, lastSelectedNode: share.graph.lastSelectedNode }
-        });
-
-        for (const node of share.graph.nodes) {
-          const remoteNode = await remote.node.findUnique({ where: { graphId_index: { graphId: share.graph.id, index: node.index } } });
-          if (remoteNode && remoteNode.updatedAt && node.updatedAt && remoteNode.updatedAt > node.updatedAt) {
-            console.log(`[Sync] Skipping node upsert for graph ${share.graph.id} index ${node.index}: remote is fresher`);
-            continue;
-          }
-          await remote.node.upsert({
-            where: { graphId_index: { graphId: share.graph.id, index: node.index } },
-            update: { url: node.url, title: node.title, caption: node.caption, pauseSec: node.pauseSec },
-            create: { 
-              id: node.id,
-              graphId: node.graphId,
-              index: node.index,
-              url: node.url,
-              title: node.title,
-              caption: node.caption,
-              pauseSec: node.pauseSec
-            }
-          });
-        }
-      }
-
-      await remote.share.upsert({
-        where: { code: share.code },
-        update: { topic: share.topic, saved: share.saved },
-        create: { 
-          code: share.code,
-          graphId: share.graphId,
-          createdByUserId: share.createdByUserId,
-          organizationId: share.organizationId,
-          saved: share.saved,
-          topic: share.topic
-        }
-      });
-    }
+    await syncShares(remote, shares);
     console.log(`[Sync] Background push successful for user ${userId}`);
   } catch (err: any) {
     console.warn(`[Sync] Background push failed:`, err.message);
@@ -127,78 +353,32 @@ export async function pullUserWorkFromCloud(userId: string) {
   if (!remote || !local) return;
 
   try {
-    const remoteUser = await remote.user.findUnique({ where: { id: userId } });
+    const remoteUser = await remote.user.findUnique({
+      where: { id: userId },
+      include: {
+        subscription: true,
+        memberships: {
+          include: { organization: { include: { subscription: true } } },
+        },
+      },
+    });
     if (remoteUser) {
       const localUser = await local.user.findUnique({ where: { id: userId } });
       if (localUser && localUser.updatedAt && remoteUser.updatedAt && localUser.updatedAt > remoteUser.updatedAt) {
         console.log(`[Sync] Skipping local user upsert for ${userId}: local is fresher`);
       } else {
-        await local.user.upsert({
-          where: { id: userId },
-          update: { handle: remoteUser.handle, email: remoteUser.email, displayName: remoteUser.displayName, avatarUrl: remoteUser.avatarUrl, passwordHash: remoteUser.passwordHash },
-          create: { 
-            id: remoteUser.id,
-            handle: remoteUser.handle,
-            email: remoteUser.email,
-            displayName: remoteUser.displayName,
-            avatarUrl: remoteUser.avatarUrl,
-            passwordHash: remoteUser.passwordHash
-          }
-        });
+        await syncUserRecord(local, remoteUser);
       }
+      await syncUserSubscription(local, remoteUser.subscription);
+      await syncMembershipBundles(local, remoteUser.memberships);
     }
 
     const remoteShares = await remote.share.findMany({
       where: { createdByUserId: userId },
-      include: { graph: { include: { nodes: true } } }
+      include: { graph: { include: { nodes: true } } },
     });
 
-    for (const share of remoteShares) {
-      const localGraph = await local.graph.findUnique({ where: { id: share.graph.id } });
-      if (localGraph && localGraph.updatedAt && share.graph.updatedAt && localGraph.updatedAt > share.graph.updatedAt) {
-        console.log(`[Sync] Skipping local graph upsert for ${share.graph.id}: local is fresher`);
-      } else {
-        await local.graph.upsert({
-          where: { id: share.graph.id },
-          update: { nodeCount: share.graph.nodeCount, lastSelectedNode: share.graph.lastSelectedNode },
-          create: { id: share.graph.id, nodeCount: share.graph.nodeCount, lastSelectedNode: share.graph.lastSelectedNode }
-        });
-
-        for (const node of share.graph.nodes) {
-          const localNode = await local.node.findUnique({ where: { graphId_index: { graphId: share.graph.id, index: node.index } } });
-          if (localNode && localNode.updatedAt && node.updatedAt && localNode.updatedAt > node.updatedAt) {
-            console.log(`[Sync] Skipping local node upsert for graph ${share.graph.id} index ${node.index}: local is fresher`);
-            continue;
-          }
-          await local.node.upsert({
-            where: { graphId_index: { graphId: share.graph.id, index: node.index } },
-            update: { url: node.url, title: node.title, caption: node.caption, pauseSec: node.pauseSec },
-            create: { 
-              id: node.id,
-              graphId: node.graphId,
-              index: node.index,
-              url: node.url,
-              title: node.title,
-              caption: node.caption,
-              pauseSec: node.pauseSec
-            }
-          });
-        }
-      }
-
-      await local.share.upsert({
-        where: { code: share.code },
-        update: { topic: share.topic, saved: share.saved },
-        create: { 
-          code: share.code,
-          graphId: share.graphId,
-          createdByUserId: share.createdByUserId,
-          organizationId: share.organizationId,
-          saved: share.saved,
-          topic: share.topic
-        }
-      });
-    }
+    await syncShares(local, remoteShares);
     console.log(`[Sync] Background pull successful for user ${userId}`);
   } catch (err: any) {
     console.warn(`[Sync] Background pull failed:`, err.message);
@@ -217,43 +397,35 @@ export async function findAndPullRemoteUser(identifier: string): Promise<boolean
       : await remote.user.findUnique({ where: { handle: ident } });
 
     if (remoteUser) {
-      // Check if a local user already exists with this handle/email but a different ID
       const existingConflict = await local.user.findFirst({
         where: {
           OR: [
             { handle: remoteUser.handle },
-            { email: remoteUser.email }
+            { email: remoteUser.email },
           ],
-          NOT: { id: remoteUser.id }
-        }
+          NOT: { id: remoteUser.id },
+        },
       });
 
       if (existingConflict) {
+        const [shareCount, membershipCount, sessionCount] = await Promise.all([
+          local.share.count({ where: { createdByUserId: existingConflict.id } }),
+          local.membership.count({ where: { userId: existingConflict.id } }),
+          local.session.count({ where: { userId: existingConflict.id } }),
+        ]);
+
+        if (shareCount > 0 || membershipCount > 0 || sessionCount > 0) {
+          console.warn(
+            `[Sync] Refusing to delete conflicting local user ${existingConflict.id}; local account already has persisted data.`,
+          );
+          return false;
+        }
+
         console.log(`[Sync] Resolving local ID conflict for ${identifier}. Adopting remote ID ${remoteUser.id}`);
-        // To resolve this cleanly, we'd ideally update all foreign keys. 
-        // For now, we'll delete the partial local conflict so the remote one can be upserted.
-        // (Note: In a production app, we would perform a full migration of local records).
         await local.user.delete({ where: { id: existingConflict.id } });
       }
 
-      await local.user.upsert({
-        where: { id: remoteUser.id },
-        update: { 
-          handle: remoteUser.handle, 
-          email: remoteUser.email, 
-          displayName: remoteUser.displayName, 
-          avatarUrl: remoteUser.avatarUrl,
-          passwordHash: remoteUser.passwordHash 
-        },
-        create: { 
-          id: remoteUser.id,
-          handle: remoteUser.handle,
-          email: remoteUser.email,
-          displayName: remoteUser.displayName,
-          avatarUrl: remoteUser.avatarUrl,
-          passwordHash: remoteUser.passwordHash
-        }
-      });
+      await pullUserWorkFromCloud(remoteUser.id);
       console.log(`[Sync] Successfully pulled remote account for ${identifier}`);
       return true;
     }

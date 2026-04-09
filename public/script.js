@@ -266,14 +266,62 @@ const PENDING_GRAPH_SYNC_KEY_PREFIX = 'pendingGraphSync:v1:';
 const PENDING_SAVED_SYNC_KEY_PREFIX = 'pendingSavedSync:v1:';
 
 function getScopedKey(base) {
-    const scope = currentUser && (currentUser.id || currentUser.handle) ? String(currentUser.id || currentUser.handle) : 'draft';
-    return `${base}:${scope}`;
+    return `${base}:${getUserScopeId(currentUser)}`;
 }
 
 function getUserScopeId(user = currentUser) {
-    if (!user) return 'draft';
-    const raw = user.id || user.handle;
+    const cachedMe = !user ? readCachedMe() : null;
+    const activeUser = user || (cachedMe && cachedMe.user ? cachedMe.user : null);
+    if (!activeUser) return 'draft';
+    const raw = activeUser.id || activeUser.handle;
     return raw ? String(raw) : 'draft';
+}
+
+function getStoredGraphId(user = currentUser) {
+    const scopeId = getUserScopeId(user);
+    const scopedKey = `${GRAPH_ID_KEY}:${scopeId}`;
+    try {
+        const scoped = localStorage.getItem(scopedKey);
+        if (scoped) return scoped;
+
+        if (scopeId !== 'draft') {
+            const draftScoped = localStorage.getItem(`${GRAPH_ID_KEY}:draft`);
+            if (draftScoped) {
+                localStorage.setItem(scopedKey, draftScoped);
+                return draftScoped;
+            }
+        }
+
+        const legacy = localStorage.getItem(GRAPH_ID_KEY);
+        if (legacy) {
+            localStorage.setItem(scopedKey, legacy);
+            return legacy;
+        }
+    } catch (_) { }
+    return null;
+}
+
+function setStoredGraphId(value, user = currentUser) {
+    const scopeId = getUserScopeId(user);
+    const scopedKey = `${GRAPH_ID_KEY}:${scopeId}`;
+    try {
+        if (!value) {
+            localStorage.removeItem(scopedKey);
+            if (scopeId === 'draft') localStorage.removeItem(GRAPH_ID_KEY);
+            return false;
+        }
+        localStorage.setItem(scopedKey, String(value));
+        if (scopeId === 'draft') {
+            localStorage.setItem(GRAPH_ID_KEY, String(value));
+        }
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+function clearStoredGraphId(user = currentUser) {
+    setStoredGraphId('', user);
 }
 
 function readJsonStorage(key, fallback = null) {
@@ -651,13 +699,19 @@ function clearExplicitSaveBaseline() {
 }
 
 function hasMeaningfulGraphContent() {
+    let hasUrl = false;
+    for (let i = 1; i <= currentNodeCount; i++) {
+        if (nodeUrls[i] && String(nodeUrls[i]).trim()) {
+            hasUrl = true;
+            break;
+        }
+    }
+    if (!hasUrl) return false;
+
     if (String(graphTopic || '').trim()) return true;
     if (Object.keys(nodeCaptions || {}).length > 0) return true;
     if (Object.keys(nodeExtraDelaySecByNode || {}).length > 0) return true;
-    for (let i = 1; i <= currentNodeCount; i++) {
-        if (nodeUrls[i] && String(nodeUrls[i]).trim()) return true;
-    }
-    return false;
+    return true;
 }
 
 function hasUnsavedChangesSinceExplicitSave() {
@@ -811,10 +865,7 @@ function openVoiceDb() {
 
 function voiceScopeKey() {
     // Scope recordings to the current local graph id if available.
-    let id = graphId;
-    if (!id) {
-        try { id = localStorage.getItem(GRAPH_ID_KEY); } catch (_) { }
-    }
+    const id = graphId || getStoredGraphId();
     return id ? `graph:${id}` : 'graph:local';
 }
 
@@ -1801,7 +1852,7 @@ async function processPendingCloudSync() {
             const graphSnapshot = cloneSerializable(pendingGraph.snapshot);
             let savedGraphId = pendingGraph.graphId || graphId || null;
             if (!savedGraphId) {
-                try { savedGraphId = localStorage.getItem(getScopedKey('graphId')); } catch (_) { }
+                savedGraphId = getStoredGraphId(syncUser);
             }
             try {
                 if (savedGraphId) {
@@ -1817,7 +1868,7 @@ async function processPendingCloudSync() {
                     });
                     if (created && created.id) {
                         graphId = created.id;
-                        localStorage.setItem(getScopedKey('graphId'), graphId);
+                        setStoredGraphId(graphId, syncUser);
                     }
                 }
                 clearPendingGraphSync(syncUser);
@@ -1873,7 +1924,8 @@ async function processPendingCloudSync() {
                     }
                 } catch (error) {
                     if (!isOfflineCapableError(error)) {
-                        console.warn('[SyncQueue] Saved item sync failed:', error);
+                        console.warn('[SyncQueue] Saved item sync failed permanently:', error);
+                        continue; // Drop the action to prevent endless spinning
                     }
                 }
 
@@ -2846,8 +2898,7 @@ async function ensureGraphId() {
     }
 
     // 2. Try stored graphId (Persistent editing) - SCOPED TO USER
-    const storageKey = getScopedKey('graphId');
-    let id = localStorage.getItem(storageKey);
+    let id = getStoredGraphId();
     if (id) {
         try {
             // Validate with backend
@@ -2858,7 +2909,7 @@ async function ensureGraphId() {
             }
         } catch (e) {
             console.warn(`[ensureGraphId] Graph ${id} not found on backend, creating new one.`, e);
-            localStorage.removeItem(storageKey);
+            clearStoredGraphId();
         }
     }
 
@@ -2869,7 +2920,7 @@ async function ensureGraphId() {
             body: JSON.stringify({ nodeCount: currentNodeCount })
         });
         if (newGraph && newGraph.id) {
-            localStorage.setItem(storageKey, newGraph.id);
+            setStoredGraphId(newGraph.id);
             console.log("[ensureGraphId] Created new graph:", newGraph.id);
             return newGraph.id;
         }
@@ -2968,12 +3019,12 @@ async function loadSavedOrSharedGraphIntoEditor(code, { origin = 'saved', enable
         });
         if (created && created.id) {
             graphId = created.id;
-            localStorage.setItem(GRAPH_ID_KEY, graphId);
+            setStoredGraphId(graphId);
         }
     } catch (e) {
         console.warn('Unable to create local graph from loaded snapshot; continuing with localStorage fallback.', e);
         graphId = null;
-        localStorage.removeItem(GRAPH_ID_KEY);
+        clearStoredGraphId();
     }
 
     if (nodeCountInput) nodeCountInput.value = currentNodeCount;
@@ -3027,7 +3078,16 @@ function scheduleApiSave({ flush = false } = {}) {
             nodeCaptions: nodeCaptions,
             nodePauseSecByNode: nodeExtraDelaySecByNode,
         };
-        const id = await ensureGraphId();
+        let id = graphId || getStoredGraphId();
+        if (!id && flush) {
+            queueGraphSnapshotForSync(snapshot, { user: currentUser });
+            saveNodeDataLegacy();
+            updateAccountProfileCard();
+            return;
+        }
+        if (!id) {
+            id = await ensureGraphId();
+        }
         if (!id) {
             queueGraphSnapshotForSync(snapshot, { user: currentUser });
             saveNodeDataLegacy();
@@ -3072,17 +3132,21 @@ function saveNodeData(options) {
     try {
         localStorage.setItem(storageKey, JSON.stringify({
             nodeCount: currentNodeCount,
+            lastSelectedNode: lastSelectedNode,
             nodeUrls,
             nodeCaptions,
             nodeExtraDelaySecByNode
         }));
     } catch (_) { }
+
+    saveNodeDataLegacy();
 }
 
 async function loadSavedNodeData() {
     try {
         const id = await ensureGraphId();
         if (id) {
+            graphId = id;
             const graph = await apiJson(`/api/v1/graphs/${id}`, { method: 'GET' });
             if (graph && typeof graph === 'object') {
                 const count = parseInt(String(graph.nodeCount), 10);
@@ -3141,6 +3205,39 @@ async function loadSavedNodeData() {
 
                 return;
             }
+        }
+
+        const scopedSnapshot = readJsonStorage(getScopedKey('graph_snapshot'), null);
+        if (scopedSnapshot && typeof scopedSnapshot === 'object') {
+            const count = parseInt(String(scopedSnapshot.nodeCount), 10);
+            if (!isNaN(count) && count >= MIN_NODES && count <= MAX_NODES) {
+                currentNodeCount = count;
+            }
+
+            for (const k in nodeUrls) delete nodeUrls[k];
+            if (scopedSnapshot.nodeUrls && typeof scopedSnapshot.nodeUrls === 'object') {
+                Object.assign(nodeUrls, scopedSnapshot.nodeUrls);
+            }
+
+            for (const k in nodeCaptions) delete nodeCaptions[k];
+            if (scopedSnapshot.nodeCaptions && typeof scopedSnapshot.nodeCaptions === 'object') {
+                Object.assign(nodeCaptions, scopedSnapshot.nodeCaptions);
+            }
+
+            if (scopedSnapshot.nodeExtraDelaySecByNode && typeof scopedSnapshot.nodeExtraDelaySecByNode === 'object') {
+                nodeExtraDelaySecByNode = scopedSnapshot.nodeExtraDelaySecByNode;
+            } else {
+                nodeExtraDelaySecByNode = {};
+            }
+
+            const scopedLastNodeId = parseInt(String(scopedSnapshot.lastSelectedNode), 10);
+            if (!isNaN(scopedLastNodeId) && scopedLastNodeId >= 1 && scopedLastNodeId <= currentNodeCount && nodeUrls[scopedLastNodeId]) {
+                lastSelectedNode = scopedLastNodeId;
+            } else {
+                findAndSetInitialNode();
+            }
+
+            return;
         }
 
         // Fall back to legacy localStorage if backend is unavailable or data is invalid.
@@ -3876,9 +3973,8 @@ function clearNodeConnectionsInternal({ resetGraph = false } = {}) {
         setGraphTopicFromExternal('', null);
         updateUpdateSavedButton();
 
-        const scopedGraphIdKey = getScopedKey('graphId');
         const scopedSnapshotKey = getScopedKey('graph_snapshot');
-        try { localStorage.removeItem(scopedGraphIdKey); } catch (_) { }
+        clearStoredGraphId(currentUser);
         try { localStorage.removeItem(scopedSnapshotKey); } catch (_) { }
         clearPendingGraphSync(currentUser);
     }

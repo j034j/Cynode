@@ -17,6 +17,30 @@ const SESSION_TTL_DAYS = 30;
 // Allowed hosts for host validation (comma-separated environment variable)
 const ALLOWED_HOSTS = process.env.ALLOWED_HOSTS?.split(",").map((h) => h.trim().toLowerCase()) || [];
 
+function normalizeHostname(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    return new URL(`http://${value}`).hostname.toLowerCase();
+  } catch (_) {
+    return null;
+  }
+}
+
+function getConfiguredAppHostname(): string | null {
+  const configured = process.env.APP_BASE_URL;
+  if (!configured) return null;
+  try {
+    return new URL(configured).hostname.toLowerCase();
+  } catch (_) {
+    return null;
+  }
+}
+
+function isLocalHostname(hostname: string | null): boolean {
+  if (!hostname) return false;
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
 export function getSessionCookieName(): string {
   return SESSION_COOKIE;
 }
@@ -26,12 +50,16 @@ export function getSessionCookieName(): string {
  * Returns true if the host is allowed or if no ALLOWED_HOSTS are configured (development mode).
  */
 function isHostAllowed(req: FastifyRequest): boolean {
+  const hostHeader = normalizeHostname(typeof req.headers.host === "string" ? req.headers.host : null);
+  if (!hostHeader) return false;
+
+  const configuredHost = getConfiguredAppHostname();
+  if (configuredHost && hostHeader === configuredHost) return true;
+  if (isLocalHostname(hostHeader)) return true;
+
   // If no allowed hosts are configured, skip validation (development)
   if (ALLOWED_HOSTS.length === 0) return true;
-  
-  const hostHeader = typeof req.headers.host === "string" ? req.headers.host.split(":")[0].toLowerCase() : null;
-  if (!hostHeader) return false;
-  
+
   // Check exact match or wildcard subdomain match
   return ALLOWED_HOSTS.some((allowed) => {
     if (allowed === hostHeader) return true;
@@ -42,10 +70,21 @@ function isHostAllowed(req: FastifyRequest): boolean {
 }
 
 function isProbablySecure(req: FastifyRequest): boolean {
-  const configuredOrigin = process.env.APP_BASE_URL ? getPublicOrigin(req) : null;
-  if (configuredOrigin) return configuredOrigin.startsWith("https://");
   const xfProto = req.headers["x-forwarded-proto"];
   if (typeof xfProto === "string") return xfProto.split(",")[0].trim() === "https";
+  const hostHeader = normalizeHostname(typeof req.headers.host === "string" ? req.headers.host : null);
+  if (isLocalHostname(hostHeader)) return false;
+
+  const configuredOrigin = process.env.APP_BASE_URL ? getPublicOrigin(req) : null;
+  if (configuredOrigin) {
+    try {
+      const configured = new URL(configuredOrigin);
+      if (!hostHeader || configured.hostname.toLowerCase() === hostHeader) {
+        return configured.protocol === "https:";
+      }
+    } catch (_) {}
+  }
+
   // Local dev usually uses http.
   return false;
 }
