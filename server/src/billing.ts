@@ -200,13 +200,15 @@ export async function registerBillingRoutes(app: FastifyInstance) {
         mode: "subscription",
         customer: customerId,
         line_items: [{ price: plan.priceId, quantity: 1 }],
+        // Omitting payment_method_types tells Stripe to display ALL methods enabled
+        // in your Stripe Dashboard (Card, Apple Pay, Google Pay, PayPal, etc.)
         allow_promotion_codes: true,
         success_url: successUrl,
         cancel_url: cancelUrl,
         client_reference_id: org.id,
         metadata: { organizationId: org.id, planKey: plan.key },
         subscription_data: { metadata: { organizationId: org.id, planKey: plan.key } },
-      });
+      } as any);
 
       if (!session.url) return reply.code(501).send({ error: "stripe_not_configured" });
       reply.code(201);
@@ -308,13 +310,15 @@ export async function registerBillingRoutes(app: FastifyInstance) {
         mode: "subscription",
         customer: customerId,
         line_items: [{ price: plan.priceId, quantity: 1 }],
+        // Omitting payment_method_types tells Stripe to display ALL methods enabled
+        // in your Stripe Dashboard (Card, Apple Pay, Google Pay, PayPal, etc.)
         allow_promotion_codes: true,
         success_url: successUrl,
         cancel_url: cancelUrl,
         client_reference_id: user.id,
         metadata: { userId: user.id, planKey: plan.key },
         subscription_data: { metadata: { userId: user.id, planKey: plan.key } },
-      });
+      } as any);
 
       reply.code(201);
       return { url: session.url! };

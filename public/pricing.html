@@ -1,59 +1,571 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Cynode Plans — choose the right plan for you. Free, Pro, and Ultra tiers with flexible payment via Card, Apple Pay, and Google Pay.">
   <meta name="theme-color" content="#0b5fff">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="manifest" href="/manifest.webmanifest?v=0326_assetfix">
+  <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon-192.png">
   <link rel="apple-touch-icon" href="/icon-192.png">
-  <link rel="stylesheet" href="/styles.css">
-  <title>Nodex Plans</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <title>Cynode Plans &amp; Pricing</title>
   <style>
-    .pricing-wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 60px 16px; }
-    .pricing-top { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
-    .pricing-title { font-size: 18px; font-weight: 900; }
-    .pricing-sub { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
-    .pricing-grid { display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-top: 14px; }
-    .plan-card { border:1px solid var(--card-border); background: var(--card-bg); border-radius: 12px; padding: 12px; }
-    .plan-name { font-size: 14px; font-weight: 900; margin-bottom: 6px; }
-    .plan-desc { font-size: 12px; color: var(--muted); line-height: 1.35; margin-bottom: 10px; }
-    .plan-li { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-    .plan-actions { margin-top: 12px; display:flex; gap:8px; flex-wrap:wrap; }
-    .plan-btn { padding: 10px 10px; border-radius: 10px; border: 1px solid rgba(0,0,0,.15); background:#fff; cursor:pointer; font-size:12px; }
-    html[data-theme="dark"] .plan-btn { background: rgba(25,31,40,.9); border-color: rgba(255,255,255,.18); color: var(--text); }
-    .plan-btn-primary { background: var(--accent); color: #fff; border-color: rgba(0,0,0,.0); }
-    .plan-status { font-size: 12px; color: var(--muted); margin-top: 10px; }
-    .usage-box { border:1px solid var(--card-border); background: var(--card-bg); border-radius: 12px; padding: 12px; margin-top: 12px; }
-    .usage-title { font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .02em; margin-bottom: 8px; }
-    .usage-row { font-size: 12px; color: var(--muted); line-height: 1.4; margin-bottom: 4px; }
-    @media (max-width: 860px) { .pricing-grid { grid-template-columns: 1fr; } }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f4f6fb;
+      --surface: #ffffff;
+      --surface2: #f8f9fc;
+      --border: rgba(0,0,0,0.08);
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #0b5fff;
+      --accent-glow: rgba(11,95,255,0.18);
+      --pro-color: #7c3aed;
+      --pro-glow: rgba(124,58,237,0.18);
+      --ultra-color: #0891b2;
+      --ultra-glow: rgba(8,145,178,0.18);
+      --success: #16a34a;
+      --warning: #d97706;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.10);
+      --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+      --radius: 16px;
+    }
+
+    html[data-theme="dark"] {
+      --bg: #0c0f18;
+      --surface: #131621;
+      --surface2: #1a1e2e;
+      --border: rgba(255,255,255,0.09);
+      --text: #e8eaf0;
+      --muted: #8b93a8;
+      --accent: #4ea1ff;
+      --accent-glow: rgba(78,161,255,0.15);
+      --pro-color: #a78bfa;
+      --pro-glow: rgba(167,139,250,0.15);
+      --ultra-color: #22d3ee;
+      --ultra-glow: rgba(34,211,238,0.15);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.35);
+      --shadow-lg: 0 8px 32px rgba(0,0,0,0.45);
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Top Nav ── */
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .nav-inner {
+      max-width: 1060px;
+      margin: 0 auto;
+      padding: 0 20px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .nav-logo {
+      font-size: 17px;
+      font-weight: 900;
+      color: var(--text);
+      text-decoration: none;
+      letter-spacing: -0.02em;
+    }
+    .nav-logo span { color: var(--accent); }
+    .nav-links { display: flex; gap: 8px; align-items: center; }
+    .nav-link {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 6px 12px;
+      border-radius: 8px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .nav-link:hover { color: var(--text); background: var(--surface2); }
+    .nav-link-cta {
+      background: var(--accent);
+      color: #fff !important;
+      padding: 7px 14px;
+    }
+    .nav-link-cta:hover { opacity: 0.9; background: var(--accent) !important; }
+    #navUserBadge {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 10px;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      text-align: center;
+      padding: 72px 20px 40px;
+    }
+    .hero-eyebrow {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-glow);
+      border-radius: 99px;
+      padding: 4px 14px;
+      margin-bottom: 16px;
+    }
+    .hero h1 {
+      font-size: clamp(28px, 5vw, 48px);
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 14px;
+      background: linear-gradient(135deg, var(--text) 0%, var(--muted) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p {
+      font-size: 16px;
+      color: var(--muted);
+      max-width: 480px;
+      margin: 0 auto 28px;
+      line-height: 1.6;
+    }
+
+    /* ── Payment methods chip row ── */
+    .payment-methods {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .payment-label { font-size: 12px; color: var(--muted); font-weight: 500; }
+    .pm-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 9px;
+      box-shadow: var(--shadow-sm);
+    }
+    .pm-chip svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+    /* ── Status banner ── */
+    #statusBanner {
+      max-width: 640px;
+      margin: 0 auto 24px;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 10px 16px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      display: none;
+    }
+    #statusBanner.info { background: var(--accent-glow); border-color: var(--accent); color: var(--accent); display: block; }
+    #statusBanner.success { background: rgba(22,163,74,0.1); border-color: #16a34a; color: var(--success); display: block; }
+    #statusBanner.error { background: rgba(239,68,68,0.1); border-color: #ef4444; color: #ef4444; display: block; }
+
+    /* ── Plan grid ── */
+    .wrap { max-width: 1060px; margin: 0 auto; padding: 0 20px 80px; }
+
+    .plans-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    @media (max-width: 800px) { .plans-grid { grid-template-columns: 1fr; } }
+
+    .plan-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      position: relative;
+      transition: box-shadow 0.2s, transform 0.2s;
+      box-shadow: var(--shadow-sm);
+    }
+    .plan-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+
+    .plan-card.featured {
+      border-color: var(--pro-color);
+      box-shadow: 0 0 0 1px var(--pro-color), var(--shadow-lg);
+      transform: scale(1.02);
+    }
+    .plan-card.featured:hover { transform: scale(1.02) translateY(-2px); }
+
+    .plan-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border-radius: 99px;
+      padding: 4px 14px;
+      white-space: nowrap;
+    }
+    .plan-badge.pro-badge { background: var(--pro-color); color: #fff; }
+    .plan-badge.ultra-badge { background: var(--ultra-color); color: #fff; }
+
+    .plan-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+      font-size: 22px;
+    }
+    .plan-icon.free-icon { background: var(--accent-glow); }
+    .plan-icon.pro-icon { background: var(--pro-glow); }
+    .plan-icon.ultra-icon { background: var(--ultra-glow); }
+
+    .plan-name {
+      font-size: 20px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+    .plan-name.free-name { color: var(--accent); }
+    .plan-name.pro-name { color: var(--pro-color); }
+    .plan-name.ultra-name { color: var(--ultra-color); }
+
+    .plan-price {
+      margin-bottom: 12px;
+    }
+    .plan-price-amount {
+      font-size: 36px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      color: var(--text);
+    }
+    .plan-price-period {
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .plan-desc {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+      margin-bottom: 20px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .plan-features { list-style: none; margin-bottom: 24px; }
+    .plan-features li {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--muted);
+      padding: 4px 0;
+      line-height: 1.4;
+    }
+    .plan-features li .check {
+      flex-shrink: 0;
+      margin-top: 1px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 900;
+    }
+    .plan-features li .check.free-check { background: var(--accent-glow); color: var(--accent); }
+    .plan-features li .check.pro-check { background: var(--pro-glow); color: var(--pro-color); }
+    .plan-features li .check.ultra-check { background: var(--ultra-glow); color: var(--ultra-color); }
+
+    /* ── CTA buttons ── */
+    .plan-cta {
+      width: 100%;
+      padding: 13px 16px;
+      border-radius: 12px;
+      border: none;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.12s, filter 0.15s;
+      letter-spacing: -0.01em;
+      position: relative;
+      overflow: hidden;
+    }
+    .plan-cta:disabled { opacity: 0.45; cursor: not-allowed; transform: none !important; }
+    .plan-cta:not(:disabled):hover { opacity: 0.9; transform: translateY(-1px); }
+    .plan-cta:not(:disabled):active { transform: translateY(0); }
+
+    .plan-cta.free-cta { background: var(--accent-glow); color: var(--accent); }
+    .plan-cta.pro-cta { background: var(--pro-color); color: #fff; box-shadow: 0 4px 16px var(--pro-glow); }
+    .plan-cta.ultra-cta { background: var(--ultra-color); color: #fff; box-shadow: 0 4px 16px var(--ultra-glow); }
+
+    .plan-cta.current-cta { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); box-shadow: none; }
+
+    .plan-manage-link {
+      display: block;
+      margin-top: 10px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-decoration: none;
+      cursor: pointer;
+      background: none;
+      border: none;
+      width: 100%;
+      padding: 6px;
+      border-radius: 8px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .plan-manage-link:hover { color: var(--text); background: var(--surface2); }
+
+    .plan-status-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 99px;
+      margin-top: 12px;
+    }
+    .plan-status-tag.active { background: rgba(22,163,74,0.12); color: var(--success); }
+    .plan-status-tag.loading { background: var(--surface2); color: var(--muted); }
+
+    /* ── Stripe trust footer ── */
+    .stripe-trust {
+      text-align: center;
+      margin-top: 14px;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    /* ── Usage box ── */
+    .usage-section {
+      margin-bottom: 28px;
+    }
+    .usage-header {
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .usage-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+    }
+    .usage-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .usage-card-label { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .usage-card-value { font-size: 22px; font-weight: 900; color: var(--text); letter-spacing: -0.02em; }
+    .usage-card-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .usage-bar { height: 4px; border-radius: 99px; background: var(--surface2); margin-top: 8px; overflow: hidden; }
+    .usage-bar-fill { height: 100%; border-radius: 99px; background: var(--accent); transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+    .usage-bar-fill.warn { background: var(--warning); }
+    .usage-bar-fill.danger { background: #ef4444; }
+
+    /* ── Spinner ── */
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      opacity: 0.6;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Sign-in gate ── */
+    #signInGate {
+      text-align: center;
+      padding: 60px 20px;
+    }
+    #signInGate .gate-icon { font-size: 48px; margin-bottom: 16px; }
+    #signInGate h2 { font-size: 22px; font-weight: 900; margin-bottom: 10px; }
+    #signInGate p { font-size: 14px; color: var(--muted); margin-bottom: 24px; }
+    .gate-btn {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 800;
+      text-decoration: none;
+      padding: 12px 28px;
+      border-radius: 12px;
+      transition: opacity 0.15s;
+    }
+    .gate-btn:hover { opacity: 0.88; }
+
+    /* ── Not configured notice ── */
+    .not-configured-notice {
+      max-width: 560px;
+      margin: 0 auto 32px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      font-size: 13px;
+      color: var(--muted);
+      display: none;
+    }
+    .not-configured-notice.show { display: block; }
+    .not-configured-notice strong { color: var(--text); }
+
+    /* ── FAQ / feature comparison ── */
+    .faq-section { margin-top: 56px; }
+    .faq-title { font-size: 20px; font-weight: 900; letter-spacing: -0.02em; margin-bottom: 20px; text-align: center; }
+    .compare-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .compare-table th, .compare-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+    .compare-table th { font-weight: 800; color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; text-align: left; }
+    .compare-table td:first-child { color: var(--text); font-weight: 500; }
+    .compare-table td { color: var(--muted); }
+    .compare-table .check-cell { color: var(--success); font-weight: 800; }
+    .compare-table .x-cell { opacity: 0.35; }
+    @media (max-width: 640px) { .compare-table { display: none; } }
   </style>
 </head>
 <body>
-  <div class="pricing-wrap">
-    <div class="pricing-top">
-      <div>
-        <div class="pricing-title">Plans</div>
-        <div class="pricing-sub">Choose your personal plan. Organization plans are managed by org owners in-app (Billing section).</div>
-      </div>
-      <div>
-        <a class="saved-link" href="/">Back to app</a>
+  <nav class="nav" role="navigation">
+    <div class="nav-inner">
+      <a class="nav-logo" href="/"><span>Cy</span>node</a>
+      <div class="nav-links">
+        <span id="navUserBadge" style="display:none;"></span>
+        <a class="nav-link" href="/">← App</a>
+        <a class="nav-link" href="/account">Account</a>
       </div>
     </div>
+  </nav>
 
-    <div id="pricingAuth" class="auth-status"></div>
-    <div id="pricingMsg" class="sidepanel-hint" style="margin-top:6px;"></div>
+  <div class="hero">
+    <div class="hero-eyebrow">Simple, transparent pricing</div>
+    <h1>The right plan for every creator</h1>
+    <p>All plans include the core Cynode experience. Upgrade for higher limits, advanced analytics, and priority access.</p>
 
-    <div id="usageBox" class="usage-box" style="display:none;">
-      <div class="usage-title">This Month</div>
-      <div id="usageRows"></div>
+    <div class="payment-methods">
+      <span class="payment-label">Accepted payments:</span>
+      <!-- Card -->
+      <span class="pm-chip">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="1" y="4" width="22" height="16" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M1 9h22" stroke="currentColor" stroke-width="1.5"/></svg>
+        Card
+      </span>
+      <!-- Apple Pay -->
+      <span class="pm-chip">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+        Apple Pay
+      </span>
+      <!-- Google Pay -->
+      <span class="pm-chip">
+        <svg viewBox="0 0 24 24" fill="none"><text x="2" y="17" font-size="11" font-weight="800" font-family="Arial,sans-serif" fill="currentColor">G Pay</text></svg>
+        Google Pay
+      </span>
+      <!-- PayPal -->
+      <span class="pm-chip">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.067 8.478c.492.88.556 2.014.3 3.327-.74 3.806-3.276 5.12-6.514 5.12h-.5a.805.805 0 00-.794.68l-.04.22-.63 3.993-.032.17a.804.804 0 01-.794.679H7.72a.483.483 0 01-.477-.558L9.535 6.423a.804.804 0 01.794-.679h5.343c1.498 0 2.813.243 3.718.98.122.098.24.202.354.312.18.168.344.35.494.545.122.16.234.327.336.5.055.094.107.192.157.293z" opacity=".7"/><path d="M9.535 6.423a.804.804 0 01.794-.679h5.343c.636 0 1.234.049 1.787.15C16.85 4.044 14.96 2.75 12.03 2.75H6.688a.804.804 0 00-.794.679L3.606 17.284a.483.483 0 00.477.558h3.542l1.91-11.419z"/></svg>
+        PayPal
+      </span>
     </div>
-
-    <div id="plansGrid" class="pricing-grid"></div>
+    <div style="font-size:11px; color: var(--muted); margin-top:6px;">Powered by Stripe — PCI-compliant, encrypted checkout</div>
   </div>
 
-  <script src="/pricing.js"></script>
+  <div class="wrap">
+    <div id="statusBanner"></div>
+    <div id="notConfiguredNotice" class="not-configured-notice">
+      <strong>Payment processing not yet configured.</strong>
+      Paid plan upgrades require Stripe API keys to be set on the server (<code>STRIPE_SECRET_KEY</code>, <code>STRIPE_PRICE_PRO</code>, <code>STRIPE_PRICE_ULTRA</code>).
+      Contact the administrator or try again later.
+    </div>
+
+    <!-- Sign-in gate (shown when not authenticated) -->
+    <div id="signInGate" style="display:none;">
+      <div class="gate-icon">🔐</div>
+      <h2>Sign in to choose a plan</h2>
+      <p>Create a free account or sign in to view your current plan and upgrade options.</p>
+      <a class="gate-btn" href="/">Open App &amp; Sign In</a>
+    </div>
+
+    <!-- Usage stats (shown when signed in) -->
+    <div id="usageSection" class="usage-section" style="display:none;">
+      <div class="usage-header">This month's usage</div>
+      <div id="usageGrid" class="usage-grid"></div>
+    </div>
+
+    <!-- Plans grid (shown always, buttons disabled if not signed in) -->
+    <div id="plansGrid" class="plans-grid" style="display:none;"></div>
+
+    <!-- Comparison table -->
+    <div id="faqSection" class="faq-section" style="display:none;">
+      <div class="faq-title">Full feature comparison</div>
+      <table class="compare-table" id="compareTable">
+        <thead>
+          <tr>
+            <th style="width:35%">Feature</th>
+            <th>Free</th>
+            <th>Pro</th>
+            <th>Ultra</th>
+          </tr>
+        </thead>
+        <tbody id="compareBody"></tbody>
+      </table>
+    </div>
+
+    <div class="stripe-trust" id="stripeTrust" style="display:none;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Secure payments via Stripe · TLS encrypted · PCI DSS compliant
+    </div>
+  </div>
+
+  <script src="/pricing.js?v=0409"></script>
 </body>
 </html>
