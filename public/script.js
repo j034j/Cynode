@@ -199,7 +199,7 @@ function setupPlatformDetection() {
         platform = 'desktop-electron';
     }
     // Check if running as PWA on iOS
-    else if (window.navigator.standalone === true || (navigator.userAgent.includes('Safari') && meta_apple_mobile_web_app_capable)) {
+    else if (window.navigator.standalone === true) {
         const meta_apple_mobile_web_app_capable = document.querySelector('meta[name="apple-mobile-web-app-capable"]');
         if (meta_apple_mobile_web_app_capable?.getAttribute('content') === 'yes') {
             platform = 'pwa-ios';
@@ -5346,8 +5346,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (typeof initSyncQueue === 'function') {
         void initSyncQueue();
     }
-});
-
 
     // Load shared data (if present), otherwise load saved data.
     const loadedShare = await tryLoadShareFromUrl();
