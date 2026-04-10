@@ -3,6 +3,7 @@ import * as AdapterLibSql from "@prisma/adapter-libsql";
 const PrismaLibSQL: any = (AdapterLibSql as any).PrismaLibSQL || (AdapterLibSql as any).PrismaLibSql;
 import path from "path";
 import { fileURLToPath } from "url";
+import { info, error, debug } from "./lib/logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,30 +80,30 @@ export async function getPrisma(): Promise<PrismaClient> {
       process.env.DATABASE_URL = runtimeUrl;
     } catch (_) {}
 
-    console.log(`[db] Mode: ${isRemote ? "Remote (Turso)" : "Local (SQLite)"}`);
-    console.log(`[db] VERCEL_ENV: ${!!process.env.VERCEL}`);
-    console.log(`[db] TURSO_URL_PRESENT: ${!!remoteUrl}`);
+    info(`[db] Mode: ${isRemote ? "Remote (Turso)" : "Local (SQLite)"}`);
+    info(`[db] VERCEL_ENV: ${!!process.env.VERCEL}`);
+    info(`[db] TURSO_URL_PRESENT: ${!!remoteUrl}`);
 
     if ((process.env.VERCEL || process.env.USE_REMOTE_DB === "true") && !isRemote) {
-      console.error("[db] FATAL: Remote runtime detected but no remote database URL is configured.");
+      error("[db] FATAL: Remote runtime detected but no remote database URL is configured.");
       throw new Error("Remote database URL is required for this deployment");
     }
 
     try {
       if (isRemote && remoteUrl && isRemoteDatabaseUrl(remoteUrl)) {
-        console.log("[db] Initializing LibSql Adapter...");
+          info("[db] Initializing LibSql Adapter...");
         const adapter = new PrismaLibSQL({ url: remoteUrl, authToken });
         prisma = new PrismaClient({ adapter });
       } else {
-        console.log("[db] Initializing standard SQLite...");
+        info("[db] Initializing standard SQLite...");
         if (localUrl !== runtimeUrl) {
-          console.log(`[db] Resolved local DATABASE_URL to ${runtimeUrl}`);
+          info(`[db] Resolved local DATABASE_URL to ${runtimeUrl}`);
         }
         prisma = new PrismaClient();
       }
       return prisma;
     } catch (err: any) {
-      console.error("[db] CRITICAL INITIALIZATION ERROR:", err.message);
+      error("[db] CRITICAL INITIALIZATION ERROR:", err.message);
       initPromise = null;
       throw err;
     }

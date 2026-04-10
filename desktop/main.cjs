@@ -7,7 +7,7 @@ const APP_ID = 'com.cynode.desktop';
 const DEFAULT_DEV_URL = 'http://127.0.0.1:3001/';
 const DEFAULT_REMOTE_URL = 'https://cynode.vercel.app/';
 const WINDOW_PARTITION = 'persist:cynode-desktop';
-const DESKTOP_WEB_CACHE_VERSION = 'desktop-web-cache-v2';
+const DESKTOP_WEB_CACHE_VERSION = 'desktop-web-cache-v3';
 const DESKTOP_START_URL_VERSION = 'desktop-start-url-v1';
 
 // Register cynode as a privileged scheme to ensure it works correctly in the browser context

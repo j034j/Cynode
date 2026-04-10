@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+dist-desktop/
+server/dist/
+.next/
+out/
+coverage/
+.env*
+*.min.js
+package-lock.json
+yarn.lock

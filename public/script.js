@@ -190,6 +190,35 @@ function setupDeviceMode() {
     window.addEventListener('orientationchange', () => apply());
 }
 
+function setupPlatformDetection() {
+    const html = document.documentElement;
+    let platform = 'web';
+
+    // Check if running in Electron desktop app
+    if (typeof window !== 'undefined' && window.cynodeDesktop && window.cynodeDesktop.isElectron) {
+        platform = 'desktop-electron';
+    }
+    // Check if running as PWA on iOS
+    else if (window.navigator.standalone === true || (navigator.userAgent.includes('Safari') && meta_apple_mobile_web_app_capable)) {
+        const meta_apple_mobile_web_app_capable = document.querySelector('meta[name="apple-mobile-web-app-capable"]');
+        if (meta_apple_mobile_web_app_capable?.getAttribute('content') === 'yes') {
+            platform = 'pwa-ios';
+        }
+    }
+    // Check if running as PWA on Android (or other platforms via manifest display: standalone)
+    else if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+        // Distinguish Android from iOS by user agent
+        if (navigator.userAgent.includes('Android')) {
+            platform = 'pwa-android';
+        }
+    }
+
+    html.dataset.platform = platform;
+    if (typeof window !== 'undefined') {
+        window._cynodePlatform = platform;
+    }
+}
+
 function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     // Best-effort; failures should not impact core UI.
@@ -4670,6 +4699,7 @@ function renderLocalQrCode(targetUrl) {
 document.addEventListener('DOMContentLoaded', async () => {
     setupThemeToggle();
     setupDeviceMode();
+    setupPlatformDetection();
     registerServiceWorker();
     setupSidepanel();
     setupVoiceSettings();
@@ -5298,6 +5328,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('online', () => {
         void processPendingCloudSync();
         void refreshCloudBackedEditorState({ force: true });
+        // Also flush the new IndexedDB sync queue when coming online
+        if (typeof flushSyncQueue === 'function') {
+            void flushSyncQueue();
+        }
     });
     window.addEventListener('focus', () => {
         void refreshCloudBackedEditorState();
@@ -5307,6 +5341,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             void refreshCloudBackedEditorState();
         }
     });
+
+    // Initialize the offline sync queue (IndexedDB-based)
+    if (typeof initSyncQueue === 'function') {
+        void initSyncQueue();
+    }
+});
 
 
     // Load shared data (if present), otherwise load saved data.

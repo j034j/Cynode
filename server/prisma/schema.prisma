@@ -42,6 +42,7 @@ model Share {
   organizationId  String?
   saved           Boolean          @default(false)
   createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
   topic           String?
   events          AnalyticsEvent[]
   media           MediaAsset[]

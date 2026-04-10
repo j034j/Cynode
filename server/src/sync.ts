@@ -309,6 +309,67 @@ async function syncShares(
   }
 }
 
+// Sync shares with conflict resolution: only update if incoming data is fresher (has newer updatedAt)
+async function syncSharesWithConflictResolution(
+  target: PrismaClient,
+  shares: Array<{
+    code: string;
+    graphId: string;
+    createdByUserId: string | null;
+    organizationId: string | null;
+    saved: boolean;
+    topic: string | null;
+    updatedAt?: Date;
+    graph: {
+      id: string;
+      nodeCount: number;
+      lastSelectedNode: number | null;
+      updatedAt?: Date | null;
+      nodes: Array<{
+        id: string;
+        graphId: string;
+        index: number;
+        url: string | null;
+        title: string | null;
+        caption: string | null;
+        pauseSec: number | null;
+        updatedAt?: Date | null;
+      }>;
+    };
+  }>,
+) {
+  for (const share of shares) {
+    // Sync graph first
+    await syncGraphWithNodes(target, share.graph);
+
+    // Check conflict: if target already has this share and target's version is fresher, skip
+    const existing = await target.share.findUnique({ where: { code: share.code } });
+    if (existing && existing.updatedAt && share.updatedAt && existing.updatedAt > share.updatedAt) {
+      console.log(`[Sync] Skipping share ${share.code}: target version is fresher`);
+      continue;
+    }
+
+    await target.share.upsert({
+      where: { code: share.code },
+      update: {
+        graphId: share.graphId,
+        createdByUserId: share.createdByUserId,
+        organizationId: share.organizationId,
+        saved: share.saved,
+        topic: share.topic,
+      },
+      create: {
+        code: share.code,
+        graphId: share.graphId,
+        createdByUserId: share.createdByUserId,
+        organizationId: share.organizationId,
+        saved: share.saved,
+        topic: share.topic,
+      },
+    });
+  }
+}
+
 export async function pushUserWorkToCloud(userId: string) {
   const remote = getRemotePrisma();
   const local = await getPrisma();
@@ -340,7 +401,8 @@ export async function pushUserWorkToCloud(userId: string) {
       include: { graph: { include: { nodes: true } } },
     });
 
-    await syncShares(remote, shares);
+    // Sync shares with conflict resolution based on updatedAt timestamp
+    await syncSharesWithConflictResolution(remote, shares);
     console.log(`[Sync] Background push successful for user ${userId}`);
   } catch (err: any) {
     console.warn(`[Sync] Background push failed:`, err.message);
@@ -378,7 +440,8 @@ export async function pullUserWorkFromCloud(userId: string) {
       include: { graph: { include: { nodes: true } } },
     });
 
-    await syncShares(local, remoteShares);
+    // Sync shares with conflict resolution based on updatedAt timestamp
+    await syncSharesWithConflictResolution(local, remoteShares);
     console.log(`[Sync] Background pull successful for user ${userId}`);
   } catch (err: any) {
     console.warn(`[Sync] Background pull failed:`, err.message);

@@ -1,0 +1,74 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module"
+  },
+  "extends": [
+    "eslint:recommended"
+  ],
+  "env": {
+    "browser": true,
+    "node": true,
+    "es2022": true
+  },
+  "rules": {
+    "no-console": [
+      "warn",
+      {
+        "allow": [
+          "warn",
+          "error"
+        ]
+      }
+    ],
+    "no-unused-vars": "off",
+    "no-empty": [
+      "error",
+      {
+        "allowEmptyCatch": true
+      }
+    ],
+    "no-cond-assign": "error",
+    "no-dupe-keys": "error",
+    "no-duplicate-case": "error",
+    "no-ex-assign": "error",
+    "no-func-assign": "error",
+    "no-import-assign": "error",
+    "no-obj-calls": "error",
+    "no-setter-return": "error",
+    "valid-typeof": "error",
+    "eqeqeq": [
+      "error",
+      "always"
+    ],
+    "no-eval": "error",
+    "no-implied-eval": "error",
+    "no-with": "error"
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/*.ts",
+        "**/*.tsx"
+      ],
+      "parser": "@typescript-eslint/parser",
+      "extends": [
+        "eslint:recommended"
+      ],
+      "rules": {
+        "no-unused-vars": "off"
+      }
+    },
+    {
+      "files": [
+        "public/**/*.js"
+      ],
+      "env": {
+        "browser": true,
+        "node": false
+      }
+    }
+  ]
+}

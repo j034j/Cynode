@@ -1,8 +1,9 @@
 import { PrismaClient } from "@prisma/client";
+import { fileURLToPath } from 'url';
 
 const prisma = new PrismaClient();
 
-async function main() {
+export async function main() {
   // Query for all tables in SQLite
   const tables = await prisma.$queryRaw`SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`;
   console.log("=== LOCAL SQLite Tables ===");
@@ -21,12 +22,15 @@ async function main() {
   console.log(`Shares: ${shareCount}`);
 }
 
-main()
-  .then(async () => {
-    await prisma.$disconnect();
-  })
-  .catch(async (e) => {
-    console.error(e);
-    await prisma.$disconnect();
-    process.exit(1);
-  });
+// If run directly, execute main and handle errors without forcing a process.exit
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main()
+    .then(async () => {
+      await prisma.$disconnect();
+    })
+    .catch(async (e) => {
+      console.error(e);
+      await prisma.$disconnect();
+      // allow caller to handle exit; do not call process.exit here
+    });
+}

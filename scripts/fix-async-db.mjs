@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { info, error } from './logger.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..', 'server', 'src');
@@ -28,6 +29,15 @@ function walk(dir) {
     }
 }
 
-console.log('Starting asynchronous database call update...');
-walk(root);
-console.log('DONE.');
+export async function main() {
+    info('Starting asynchronous database call update...');
+    walk(root);
+    info('DONE.');
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+    main().catch((err) => {
+        error('fix-async-db failed:', err?.message ?? err);
+        process.exitCode = 1;
+    });
+}

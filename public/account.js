@@ -197,7 +197,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
         await loadProfile();
-    } catch (_) {
+    } catch (err) {
+        console.error('[account] Failed to load profile:', err);
         window.location.href = '/';
         return;
     }
