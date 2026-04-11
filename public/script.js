@@ -557,7 +557,8 @@ function updateAccountProfileCard() {
     if (isOfflineSession && pendingCount > 0) {
         stateEl.textContent = `${pendingCount} queued change${pendingCount === 1 ? '' : 's'} will sync when Cynode reconnects.`;
     } else if (isOfflineSession) {
-        stateEl.textContent = 'Offline mode active. Local changes stay available here and sync when the backend is reachable again.';
+        const reason = currentUser.offlineReason ? ` (${currentUser.offlineReason})` : '';
+        stateEl.textContent = `Offline mode active${reason}. Local changes stay available here and sync when the backend is reachable again.`;
     } else if (pendingCount > 0) {
         stateEl.textContent = `${pendingCount} queued change${pendingCount === 1 ? '' : 's'} waiting for cloud sync.`;
     } else if (isDesktop) {
@@ -583,7 +584,11 @@ async function maybeHandleOfflineApiFallback(path, init = {}, detail = {}) {
         const offlineUser = getOfflineSessionUser();
         if (offlineUser) {
             return {
-                user: { ...offlineUser, isOffline: true },
+                user: { 
+                    ...offlineUser, 
+                    isOffline: true, 
+                    offlineReason: status ? `Server error ${status}` : (navigator.onLine ? 'Network error' : 'Device is offline') 
+                },
                 userPlan: null,
                 organizations: [],
                 offline: true,
