@@ -52,13 +52,7 @@ export function resolveDatabaseConfig() {
 
   const normalizedDatabaseUrl = normalizeDatabaseUrl(configuredDatabaseUrl);
   const remoteUrl = tursoUrl || (isRemoteDatabaseUrl(configuredDatabaseUrl) ? configuredDatabaseUrl!.trim() : null);
-  const isRemote =
-    Boolean(remoteUrl) &&
-    (process.env.VERCEL === "1" ||
-      process.env.VERCEL === "true" ||
-      Boolean(process.env.VERCEL) ||
-      process.env.USE_REMOTE_DB === "true" ||
-      isRemoteDatabaseUrl(configuredDatabaseUrl));
+  const isRemote = Boolean(remoteUrl);
 
   return {
     authToken,

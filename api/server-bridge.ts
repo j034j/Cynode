@@ -14,7 +14,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await prisma.$queryRaw`SELECT 1`;
     } catch (dbErr) {
       console.error('Server Bridge DB health check failed:', dbErr);
-      return res.status(503).json({ ok: false, error: 'Service Unavailable', message: 'Database unavailable' });
+      const detail = dbErr instanceof Error ? dbErr.message : String(dbErr);
+      return res.status(503).json({ ok: false, error: 'Service Unavailable', message: `Database unavailable: ${detail}` });
     }
 
     // Explicitly handle root/health check for the bridge
