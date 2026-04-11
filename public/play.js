@@ -46,6 +46,7 @@ let _onPlaybackStopCallback = null;
 let _onNodeChangedCallback = null;
 let _analyticsEventCallback = null;
 let _resolveUrlForViewerCallback = null;
+let _isEditingMode = () => false;
 
 // --- Metadata Cache ---
 let failedFaviconDomains = new Set();

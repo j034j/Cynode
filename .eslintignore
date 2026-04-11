@@ -1,10 +1,4 @@
-node_modules/
-dist/
-build/
-dist-desktop/
-server/dist/
-.next/
-out/
-coverage/
-.env*
-*.min.js
+public/extensions/**
+public/qrcode-node.js
+legacy-extension/**
+public/play-desktop.js

@@ -47,6 +47,9 @@
     "no-implied-eval": "error",
     "no-with": "error"
   },
+  "globals": {
+    "NodeJS": "readonly"
+  },
   "overrides": [
     {
       "files": [
@@ -68,6 +71,20 @@
       "env": {
         "browser": true,
         "node": false
+      },
+      "globals": {
+        "Chart": "readonly",
+        "mammoth": "readonly",
+        "XLSX": "readonly",
+        "hljs": "readonly",
+        "localFileObjectUrlById": "readonly",
+        "nodeGraph": "readonly",
+        "qrcode": "readonly",
+        "module": "readonly",
+        "require": "readonly"
+      },
+      "rules": {
+        "eqeqeq": "off"
       }
     }
   ]
