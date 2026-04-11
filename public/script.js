@@ -123,6 +123,9 @@ async function openUrlInBestTarget(url, options = {}) {
         }
     }
 
+    if (typeof sendAnalyticsEvent === 'function' && options.nodeId) {
+        void sendAnalyticsEvent('node_visit', options.nodeId, targetUrl);
+    }
     window.open(targetUrl, '_blank', 'noopener,noreferrer');
     return true;
 }
@@ -3934,6 +3937,9 @@ function hideAllModals() {
  */
 function updateRecentUrl(nodeId, isPlayingHighlight = false) {
     if (!recentUrlDiv) return;
+    if (typeof sendAnalyticsEvent === 'function' && nodeId) {
+        void sendAnalyticsEvent('node_preview', nodeId);
+    }
 
     let text = 'No node selected';
     let title = '';

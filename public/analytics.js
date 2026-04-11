@@ -397,13 +397,17 @@ async function main() {
 
     renderCompactTable(campaignsEl, {
       columns: [
-        { label: 'Campaign', render: (row) => row.campaign },
+        { label: 'Dimension', render: (row) => row.dimension },
+        { label: 'Label', render: (row) => row.label || row.campaign },
         { label: 'Views', render: (row) => number(row.views) },
-        { label: 'Unique', render: (row) => number(row.uniques) },
         { label: 'Visits', render: (row) => number(row.visits) },
       ],
-      rows: overview.topCampaigns || [],
-      emptyText: 'No campaign attribution has been recorded yet.',
+      rows: [
+        ...(overview.topCampaigns || []).slice(0, 5).map((row) => ({ ...row, dimension: 'Campaign' })),
+        ...(overview.topSources || []).slice(0, 5).map((row) => ({ ...row, dimension: 'Source', views: row.count, visits: 0 })),
+        ...(overview.topMediums || []).slice(0, 5).map((row) => ({ ...row, dimension: 'Medium', views: row.count, visits: 0 })),
+      ],
+      emptyText: 'No campaign or multi-channel attribution data yet.',
     });
 
     renderCompactTable(topicsEl, {
@@ -432,11 +436,26 @@ async function main() {
         { label: 'Count', render: (row) => number(row.count) },
       ],
       rows: [
-        ...(overview.topCountries || []).slice(0, 5).map((row) => ({ ...row, dimension: 'Country' })),
-        ...(overview.topDevices || []).slice(0, 5).map((row) => ({ ...row, dimension: 'Device' })),
+        ...(overview.topCountries || []).slice(0, 3).map((row) => ({ ...row, dimension: 'Country' })),
+        ...(overview.topCities || []).slice(0, 3).map((row) => ({ ...row, dimension: 'City' })),
+        ...(overview.topDevices || []).slice(0, 3).map((row) => ({ ...row, dimension: 'Device' })),
+        ...(overview.topBrowsers || []).slice(0, 3).map((row) => ({ ...row, dimension: 'Browser' })),
+        ...(overview.topOS || []).slice(0, 3).map((row) => ({ ...row, dimension: 'OS' })),
       ],
-      emptyText: 'No audience breakdown yet.',
+      emptyText: 'No audience geography or technology data yet.',
     });
+
+    const topGlobalUrlsEl = document.getElementById('analyticsTopGlobalUrls');
+    if (topGlobalUrlsEl) {
+      renderCompactTable(topGlobalUrlsEl, {
+        columns: [
+          { label: 'Destination URL', render: (row) => row.url },
+          { label: 'Total Visits', render: (row) => number(row.visits) },
+        ],
+        rows: overview.topUrls || [],
+        emptyText: 'No global outbound visits recorded yet.',
+      });
+    }
 
     renderTopShares(sharesEl, overview.topShares, async (code) => {
       selectedCode = code;

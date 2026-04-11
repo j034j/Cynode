@@ -45,6 +45,7 @@ model Share {
   topic     String?
   saved     Boolean  @default(false)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   media     MediaAsset[]
   events    AnalyticsEvent[]
 

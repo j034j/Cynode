@@ -815,7 +815,13 @@ export async function registerRoutes(app: FastifyInstance) {
             })),
             topReferrers: z.array(z.object({ label: z.string(), count: z.number().int() })),
             topCountries: z.array(z.object({ label: z.string(), count: z.number().int() })),
+            topCities: z.array(z.object({ label: z.string(), count: z.number().int() })),
             topDevices: z.array(z.object({ label: z.string(), count: z.number().int() })),
+            topBrowsers: z.array(z.object({ label: z.string(), count: z.number().int() })),
+            topOS: z.array(z.object({ label: z.string(), count: z.number().int() })),
+            topUrls: z.array(z.object({ url: z.string(), visits: z.number().int() })),
+            topSources: z.array(z.object({ label: z.string(), count: z.number().int() })),
+            topMediums: z.array(z.object({ label: z.string(), count: z.number().int() })),
             topShares: z.array(z.object({
               code: z.string(),
               topic: z.string().nullable(),
@@ -864,7 +870,13 @@ export async function registerRoutes(app: FastifyInstance) {
           topTopics: [],
           topReferrers: [],
           topCountries: [],
+          topCities: [],
           topDevices: [],
+          topBrowsers: [],
+          topOS: [],
+          topUrls: [],
+          topSources: [],
+          topMediums: [],
           topShares: [],
         };
       }
@@ -955,11 +967,65 @@ export async function registerRoutes(app: FastifyInstance) {
          LIMIT 8`,
         ...currentRangeParams,
       );
+      const topCityRows = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT COALESCE(NULLIF(city,''), '(unknown)') as label, COUNT(*) as count
+         FROM AnalyticsEvent
+         WHERE shareCode IN (${placeholders}) AND type='share_view' AND createdAt >= ? AND createdAt < ?
+         GROUP BY COALESCE(NULLIF(city,''), '(unknown)')
+         ORDER BY count DESC
+         LIMIT 8`,
+        ...currentRangeParams,
+      );
       const topDeviceRows = await prisma.$queryRawUnsafe<any[]>(
         `SELECT COALESCE(NULLIF(device,''), '(unknown)') as label, COUNT(*) as count
          FROM AnalyticsEvent
          WHERE shareCode IN (${placeholders}) AND type='share_view' AND createdAt >= ? AND createdAt < ?
          GROUP BY COALESCE(NULLIF(device,''), '(unknown)')
+         ORDER BY count DESC
+         LIMIT 8`,
+        ...currentRangeParams,
+      );
+      const topBrowserRows = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT COALESCE(NULLIF(browser,''), '(unknown)') as label, COUNT(*) as count
+         FROM AnalyticsEvent
+         WHERE shareCode IN (${placeholders}) AND type='share_view' AND createdAt >= ? AND createdAt < ?
+         GROUP BY COALESCE(NULLIF(browser,''), '(unknown)')
+         ORDER BY count DESC
+         LIMIT 8`,
+        ...currentRangeParams,
+      );
+      const topOSRows = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT COALESCE(NULLIF(os,''), '(unknown)') as label, COUNT(*) as count
+         FROM AnalyticsEvent
+         WHERE shareCode IN (${placeholders}) AND type='share_view' AND createdAt >= ? AND createdAt < ?
+         GROUP BY COALESCE(NULLIF(os,''), '(unknown)')
+         ORDER BY count DESC
+         LIMIT 8`,
+        ...currentRangeParams,
+      );
+      const topUrlRows = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT url, COUNT(*) as visits
+         FROM AnalyticsEvent
+         WHERE shareCode IN (${placeholders}) AND type='node_visit' AND createdAt >= ? AND createdAt < ? AND url IS NOT NULL
+         GROUP BY url
+         ORDER BY visits DESC
+         LIMIT 8`,
+        ...currentRangeParams,
+      );
+      const topSourceRows = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT COALESCE(NULLIF(utmSource,''), '(unknown)') as label, COUNT(*) as count
+         FROM AnalyticsEvent
+         WHERE shareCode IN (${placeholders}) AND type='share_view' AND createdAt >= ? AND createdAt < ?
+         GROUP BY COALESCE(NULLIF(utmSource,''), '(unknown)')
+         ORDER BY count DESC
+         LIMIT 8`,
+        ...currentRangeParams,
+      );
+      const topMediumRows = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT COALESCE(NULLIF(utmMedium,''), '(unknown)') as label, COUNT(*) as count
+         FROM AnalyticsEvent
+         WHERE shareCode IN (${placeholders}) AND type='share_view' AND createdAt >= ? AND createdAt < ?
+         GROUP BY COALESCE(NULLIF(utmMedium,''), '(unknown)')
          ORDER BY count DESC
          LIMIT 8`,
         ...currentRangeParams,
@@ -1046,7 +1112,13 @@ export async function registerRoutes(app: FastifyInstance) {
         })),
         topReferrers: topRefRows.map((row) => ({ label: String(row.label), count: Number(row.count) || 0 })),
         topCountries: topCountryRows.map((row) => ({ label: String(row.label), count: Number(row.count) || 0 })),
+        topCities: topCityRows.map((row) => ({ label: String(row.label), count: Number(row.count) || 0 })),
         topDevices: topDeviceRows.map((row) => ({ label: String(row.label), count: Number(row.count) || 0 })),
+        topBrowsers: topBrowserRows.map((row) => ({ label: String(row.label), count: Number(row.count) || 0 })),
+        topOS: topOSRows.map((row) => ({ label: String(row.label), count: Number(row.count) || 0 })),
+        topUrls: topUrlRows.map((row) => ({ url: String(row.url), visits: Number(row.visits) || 0 })),
+        topSources: topSourceRows.map((row) => ({ label: String(row.label), count: Number(row.count) || 0 })),
+        topMediums: topMediumRows.map((row) => ({ label: String(row.label), count: Number(row.count) || 0 })),
         topShares,
       };
     },

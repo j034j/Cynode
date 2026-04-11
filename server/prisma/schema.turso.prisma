@@ -2,6 +2,7 @@ generator client {
   provider        = "prisma-client-js"
   binaryTargets   = ["native", "rhel-openssl-3.0.x"]
   previewFeatures = ["driverAdapters"]
+  engineType      = "binary"
 }
 
 datasource db {
@@ -45,6 +46,7 @@ model Share {
   organizationId  String?
   saved           Boolean          @default(false)
   createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
   topic           String?
   events          AnalyticsEvent[]
   media           MediaAsset[]
