@@ -93,7 +93,7 @@ export async function getPrisma(): Promise<PrismaClient> {
       if (isRemote && remoteUrl && isRemoteDatabaseUrl(remoteUrl)) {
           info("[db] Initializing LibSql Adapter...");
         const adapter = new PrismaLibSQL({ url: remoteUrl, authToken });
-        prisma = new PrismaClient({ adapter });
+        prisma = new PrismaClient({ adapter } as any);
       } else {
         info("[db] Initializing standard SQLite...");
         if (localUrl !== runtimeUrl) {

@@ -27,7 +27,7 @@ function getRemotePrisma(): PrismaClient | null {
 
   try {
     const adapter = new PrismaLibSQL({ url, authToken });
-    remotePrisma = new PrismaClient({ adapter: adapter as any });
+    remotePrisma = new PrismaClient({ adapter } as any);
     return remotePrisma;
   } catch (e: any) {
     console.error("[Sync] Failed to initialize remote Prisma:", e.message);
