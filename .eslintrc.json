@@ -81,7 +81,20 @@
         "nodeGraph": "readonly",
         "qrcode": "readonly",
         "module": "readonly",
-        "require": "readonly"
+        "require": "readonly",
+        "loadUrlInViewer": "readonly",
+        "stopPlaySequence": "readonly",
+        "isPlayingInModule": "readonly",
+        "startPlaybackInModule": "readonly",
+        "setupPlay": "readonly",
+        "flushSyncQueue": "readonly",
+        "initSyncQueue": "readonly",
+        "clearAuthError": "readonly",
+        "setAuthMode": "readonly",
+        "QRCode": "readonly",
+        "browser": "readonly",
+        "chrome": "readonly",
+        "startPlaySequence": "readonly"
       },
       "rules": {
         "eqeqeq": "off"
