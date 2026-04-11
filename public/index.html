@@ -108,6 +108,14 @@
         </div>
 
         <div class="sidepanel-section">
+          <div class="sidepanel-title">Analytics Dashboard</div>
+          <div class="sidepanel-hint">Full campaign and link-performance tracking.</div>
+          <div style="margin-top:8px;">
+            <a class="saved-link" href="/analytics">Open Dashboard</a>
+          </div>
+        </div>
+
+        <div class="sidepanel-section">
           <div class="playback-mode-switcher">
             <button id="toNormalModeBtn" class="mode-toggle-btn active" type="button">Normal Playback</button>
             <button id="toEditingModeBtn" class="mode-toggle-btn" type="button">Editing Mode</button>
@@ -266,14 +274,6 @@
           <select id="dashboardScopeSelect" class="settings-select" style="margin-top:8px;"></select>
           <div id="dashboardList" style="margin-top:10px;"></div>
           <div id="dashboardDetail" class="settings-hint" style="margin-top:10px;"></div>
-        </div>
-
-        <div class="sidepanel-section">
-          <div class="sidepanel-title">Analytics Dashboard</div>
-          <div class="sidepanel-hint">Full campaign and link-performance tracking.</div>
-          <div style="margin-top:8px;">
-            <a class="saved-link" href="/analytics">Open Dashboard</a>
-          </div>
         </div>
 
         <div class="sidepanel-section">
@@ -478,6 +478,10 @@
   <div id="modalBackdrop"></div>
 
   <!-- Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script src="/qrcode-node.js?v=0326_localqr3"></script>
   <script src="/sync-queue.js?v=0410_offlinequeue"></script>
   <script src="/script.js?v=0402_syncfix"></script>

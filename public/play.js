@@ -660,6 +660,138 @@ async function fetchUrlMetadata(url) {
     return request;
 }
 
+async function renderRichFilePreview(url, meta, nodeId, loadToken) {
+    if (!url || !viewerFrame) return false;
+    
+    const mime = (meta && meta.mimeType) ? String(meta.mimeType).toLowerCase() : '';
+    const name = (meta && meta.name) ? String(meta.name) : 'File';
+    const size = (meta && meta.sizeBytes) ? Number(meta.sizeBytes) : 0;
+
+    // Helper for large file warning
+    const isTooLarge = size > 15 * 1024 * 1024; // 15MB limit for rich browser-side processing
+
+    // 1. Text / Code (Highlight.js)
+    const isCode = mime.startsWith('text/') || 
+                   mime === 'application/json' || 
+                   mime === 'application/javascript' || 
+                   mime === 'application/xml' ||
+                   (name.match(/\.(js|ts|py|go|rs|c|cpp|h|java|sh|md|txt|yaml|yml|json|css|html|sql|xml|csv)$/i) && !mime.includes('image'));
+
+    if (isCode && !isTooLarge) {
+        try {
+            const resp = await fetch(url);
+            const text = await resp.text();
+            if (loadToken !== previewLoadToken) return true;
+            
+            const escaped = escapeHtml(text);
+            const style = `
+                body { margin: 0; background: #fafafa; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+                pre { padding: 20px; margin: 0; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
+                .filename-bar { background: #f1f5f9; padding: 8px 20px; border-bottom: 1px solid #e2e8f0; font-size: 11px; font-family: sans-serif; color: #64748b; font-weight: 500; display: flex; justify-content: space-between; }
+            `;
+            viewerFrame.srcdoc = `
+                <style>${style}</style>
+                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+                <div class="filename-bar">
+                    <span>${escapeHtml(name)}</span>
+                    <span>${(size / 1024).toFixed(1)} KB</span>
+                </div>
+                <pre><code class="hljs">${escaped}</code></pre>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+                <script>setTimeout(() => { try { hljs.highlightAll(); } catch(e) {} }, 50);</script>
+            `;
+            return true;
+        } catch (e) { console.warn("Rich text preview failed", e); }
+    }
+
+    // 2. Word (.docx) via Mammoth
+    const isDocx = name.toLowerCase().endsWith('.docx') || 
+                   mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+    if (isDocx && !isTooLarge && typeof mammoth !== 'undefined') {
+        try {
+            const arrayBuffer = await (await fetch(url)).arrayBuffer();
+            if (loadToken !== previewLoadToken) return true;
+            const result = await mammoth.convertToHtml({ arrayBuffer });
+            const html = result.value;
+            viewerFrame.srcdoc = `
+                <style>
+                    body { font-family: 'Segoe UI', serif; padding: 40px; line-height: 1.6; color: #333; background: #fff; max-width: 800px; margin: 0 auto; box-shadow: 0 0 20px rgba(0,0,0,0.05); min-height: 100vh; }
+                    img { max-width: 100%; height: auto; }
+                    h1, h2, h3 { color: #2c3e50; }
+                    .docx-header { border-bottom: 1px solid #eee; margin-bottom: 30px; padding-bottom: 10px; font-family: sans-serif; font-size: 12px; color: #999; }
+                </style>
+                <div class="docx-header">Snapshot of ${escapeHtml(name)}</div>
+                <div class="word-preview">${html}</div>
+            `;
+            return true;
+        } catch (e) { console.warn("Docx preview failed", e); }
+    }
+
+    // 3. Excel (.xlsx) via SheetJS
+    const isExcel = name.toLowerCase().endsWith('.xlsx') || 
+                    name.toLowerCase().endsWith('.csv') || 
+                    mime.includes('spreadsheet') ||
+                    mime.includes('csv');
+
+    if (isExcel && !isTooLarge && typeof XLSX !== 'undefined') {
+        try {
+            const arrayBuffer = await (await fetch(url)).arrayBuffer();
+            if (loadToken !== previewLoadToken) return true;
+            const workbook = XLSX.read(arrayBuffer);
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            const html = XLSX.utils.sheet_to_html(worksheet);
+            viewerFrame.srcdoc = `
+                <style>
+                    body { font-family: -apple-system, system-ui, sans-serif; padding: 0; background: #f8fafc; margin: 0; }
+                    .excel-container { padding: 20px; }
+                    h3 { font-size: 14px; color: #1e293b; margin: 0 0 12px 0; font-weight: 600; }
+                    table { border-collapse: collapse; background: white; border: 1px solid #cbd5e1; font-size: 12px; min-width: 100%; }
+                    td, th { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; }
+                    tr:nth-child(even) { background-color: #f8fafc; }
+                    th { background: #f1f5f9; font-weight: 600; color: #475569; position: sticky; top: 0; }
+                    .sheet-tabs { background: #fff; border-top: 1px solid #e2e8f0; padding: 4px 20px; position: sticky; bottom: 0; font-size: 11px; color: #0b5fff; font-weight: bold; }
+                </style>
+                <div class="excel-container">
+                    <h3>${escapeHtml(name)}</h3>
+                    <div style="overflow-x: auto;">${html}</div>
+                </div>
+                <div class="sheet-tabs">Sheet: ${escapeHtml(firstSheetName)}</div>
+            `;
+            return true;
+        } catch (e) { console.warn("Excel preview failed", e); }
+    }
+
+    // 4. Fallback to native (Images, PDF, Video)
+    if (mime.startsWith('image/') || mime === 'application/pdf' || mime.startsWith('video/')) {
+        try { viewerFrame.sandbox = "allow-scripts allow-popups allow-same-origin"; } catch (_) {}
+        try { viewerFrame.srcdoc = ''; } catch (_) {}
+        viewerFrame.src = url;
+        return true;
+    }
+
+    // 5. Generic File Card
+    viewerFrame.srcdoc = `
+        <style>
+            body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; background: #f8fafc; color: #475569; }
+            .card { background: white; padding: 32px; border-radius: 16px; border: 1px solid #e2e8f0; text-align: center; max-width: 320px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); }
+            .icon { font-size: 48px; margin-bottom: 16px; display: inline-block; filter: grayscale(0.2); }
+            .name { font-weight: 700; color: #0f172a; margin-bottom: 8px; word-break: break-all; line-height: 1.3; }
+            .meta { font-size: 13px; color: #94a3b8; margin-bottom: 24px; }
+            .btn { display: inline-block; background: #0b5fff; color: white; padding: 10px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; border: none; cursor: pointer; }
+        </style>
+        <div class="card">
+            <div class="icon">${isTooLarge ? '🐘' : '📄'}</div>
+            <div class="name">${escapeHtml(name)}</div>
+            <div class="meta">${(size / 1024 / 1024).toFixed(2)} MB • ${escapeHtml(mime || 'Binary file')}</div>
+            <a href="${url}" download="${escapeHtml(name)}" class="btn">Download to View</a>
+            ${isTooLarge ? `<div style="font-size:11px; margin-top:10px; color:#94a3b8;">File is too large for in-browser snapshot.</div>` : ''}
+        </div>
+    `;
+    return true;
+}
+
 async function loadUrlInViewer(url, nodeId) {
     if (!viewerFrame) {
         console.error('Viewer frame not found, cannot load URL.');
@@ -684,13 +816,19 @@ async function loadUrlInViewer(url, nodeId) {
     if (loadToken !== previewLoadToken) return;
 
     if (resolved && resolved.kind === 'localfile') {
-        const name = resolved.meta && resolved.meta.name ? String(resolved.meta.name) : 'Local file';
         if (!resolved.url) {
+            const name = resolved.meta && resolved.meta.name ? String(resolved.meta.name) : 'Local file';
             try { viewerFrame.sandbox = "allow-scripts allow-popups"; } catch (_) {}
             viewerFrame.src = 'about:blank';
             viewerFrame.srcdoc = `<p style="text-align: center; padding: 40px 20px; color: #666; font-family: Arial, sans-serif;">Local file unavailable on this device: ${escapeHtml(name)}</p>`;
             return;
         }
+
+        const handled = await renderRichFilePreview(resolved.url, resolved.meta, nodeId, loadToken);
+        if (loadToken !== previewLoadToken) return;
+        if (handled) return;
+
+        // Fallback for cases where rich preview wasn't applicable
         try { viewerFrame.sandbox = "allow-scripts allow-popups allow-same-origin"; } catch (_) {}
         try { viewerFrame.srcdoc = ''; } catch (_) {}
         viewerFrame.src = String(resolved.url);
@@ -698,6 +836,14 @@ async function loadUrlInViewer(url, nodeId) {
     }
 
     const finalUrl = resolved && resolved.url ? String(resolved.url) : String(url || '');
+    
+    // Check if the remote URL is actually a directly viewable binary file (blob/data)
+    if (isBlobOrDataUrl(finalUrl)) {
+        const handled = await renderRichFilePreview(finalUrl, resolved ? resolved.meta : null, nodeId, loadToken);
+        if (loadToken !== previewLoadToken) return;
+        if (handled) return;
+    }
+
     try { viewerFrame.sandbox = "allow-scripts allow-popups"; } catch (_) {}
 
     // Loading state
@@ -706,12 +852,6 @@ async function loadUrlInViewer(url, nodeId) {
 
     // Non-web URLs
     if (!isHttpUrl(finalUrl)) {
-        if (isBlobOrDataUrl(finalUrl)) {
-            try { viewerFrame.sandbox = "allow-scripts allow-popups allow-same-origin"; } catch (_) {}
-            try { viewerFrame.srcdoc = ''; } catch (_) {}
-            viewerFrame.src = finalUrl;
-            return;
-        }
         const safeUrl = escapeAttr(finalUrl);
         viewerFrame.srcdoc = `
         <style>

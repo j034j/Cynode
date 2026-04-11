@@ -152,27 +152,39 @@ export async function putGraph(
         data: { nodeCount, lastSelectedNode },
       });
 
+      // Clear existing nodes for this graph to avoid conflicts and simplify the update
       await tx.node.deleteMany({
-        where: { graphId: id, index: { gt: nodeCount } },
+        where: { graphId: id },
       });
 
+      const nodeEntries = [];
       for (let i = 1; i <= nodeCount; i++) {
         const url = nodeUrls[String(i)] ?? null;
         const title = nodeCaptions[String(i)]?.title ?? null;
         const caption = nodeCaptions[String(i)]?.caption ?? null;
         const pauseSec = Number(nodePauseSecByNode[String(i)]);
         const normalizedPauseSec = Number.isFinite(pauseSec) ? pauseSec : null;
+
         if (url || title || caption || normalizedPauseSec !== null) {
-          await tx.node.upsert({
-            where: { graphId_index: { graphId: id, index: i } },
-            create: { graphId: id, index: i, url, title, caption, pauseSec: normalizedPauseSec } as any,
-            update: { url, title, caption, pauseSec: normalizedPauseSec } as any,
+          nodeEntries.push({
+            graphId: id,
+            index: i,
+            url,
+            title,
+            caption,
+            pauseSec: normalizedPauseSec,
           });
         }
       }
 
+      if (nodeEntries.length > 0) {
+        await tx.node.createMany({
+          data: nodeEntries,
+        });
+      }
+
       return g;
-    });
+    }, { timeout: 15000 });
 
     return {
       id,

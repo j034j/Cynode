@@ -225,28 +225,14 @@ async function syncGraphWithNodes(
     },
   });
 
-  const nodeIndexes = graph.nodes.map((node) => node.index);
-  if (nodeIndexes.length > 0) {
-    await target.node.deleteMany({
-      where: {
-        graphId: graph.id,
-        index: { notIn: nodeIndexes },
-      },
-    });
-  } else {
-    await target.node.deleteMany({ where: { graphId: graph.id } });
-  }
+  // Simple and efficient: replace all nodes for this graph
+  await target.node.deleteMany({
+    where: { graphId: graph.id },
+  });
 
-  for (const node of graph.nodes) {
-    await target.node.upsert({
-      where: { graphId_index: { graphId: graph.id, index: node.index } },
-      update: {
-        url: node.url,
-        title: node.title,
-        caption: node.caption,
-        pauseSec: node.pauseSec,
-      },
-      create: {
+  if (graph.nodes.length > 0) {
+    await target.node.createMany({
+      data: graph.nodes.map((node) => ({
         id: node.id,
         graphId: node.graphId,
         index: node.index,
@@ -254,7 +240,7 @@ async function syncGraphWithNodes(
         title: node.title,
         caption: node.caption,
         pauseSec: node.pauseSec,
-      },
+      })),
     });
   }
 }
