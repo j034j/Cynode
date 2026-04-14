@@ -108,7 +108,11 @@ app.addHook("onSend", (req, reply, payload, done) => {
     if (
       url.startsWith("/api/v1/me") ||
       url.startsWith("/api/v1/user") ||
-      url.startsWith("/api/v1/auth")
+      url.startsWith("/api/v1/auth") ||
+      url.startsWith("/api/v1/saved") ||
+      url.startsWith("/api/v1/graphs") ||
+      url.startsWith("/api/v1/shares") ||
+      url.startsWith("/api/v1/analytics")
     ) {
       reply.header("Cache-Control", "no-cache, no-store, must-revalidate");
       reply.header("Pragma", "no-cache");

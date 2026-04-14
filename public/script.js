@@ -457,11 +457,14 @@ function countPendingCloudSyncItems(user = currentUser) {
 
 function isOfflineCapableError(error) {
     const msg = String(error && error.message ? error.message : error || '');
-    return /Failed to fetch|NetworkError|Load failed|offline|API 502|API 503|API 504|Database unavailable|Service Unavailable/i.test(msg);
+    return /Failed to fetch|NetworkError|Load failed|offline/i.test(msg);
 }
 
 function isOfflineCapableResponse(status, text = '') {
-    return status === 0 || status === 502 || status === 503 || status === 504 || /database unavailable|service unavailable/i.test(String(text || ''));
+    // Only treat persistent network errors as offline (502, 504).
+    // 503 (Service Unavailable) should retry — it's usually temporary (cold database, Turso recovery, etc.)
+    // 0 indicates network fetch failure which is truly offline-capable.
+    return status === 0 || status === 502 || status === 504;
 }
 
 function queueGraphSnapshotForSync(snapshot, { graphIdOverride = graphId, user = currentUser } = {}) {
@@ -1455,12 +1458,36 @@ async function apiJson(path, options) {
     if (!init.cache) init.cache = 'no-store';
 
     let res;
-    try {
+    let lastError = null;
+    const maxRetries = 2;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
         res = await fetch(fullPath, init);
-    } catch (e) {
+    
+        // Handle temporary service unavailability with retry
+        if (res.status === 503) {
+          if (attempt < maxRetries - 1) {
+            const delay = Math.pow(2, attempt) * 500; // 500ms, then 1000ms
+            console.warn(`[API] Got 503 for ${path}, retrying in ${delay}ms...`);
+            await new Promise(r => setTimeout(r, delay));
+            continue;
+          }
+          // Final attempt succeeded or we've exhausted retries
+        }
+        break;
+      } catch (e) {
+        lastError = e;
+        if (attempt < maxRetries - 1) {
+          const delay = Math.pow(2, attempt) * 500;
+          console.warn(`[API] Fetch error for ${path}, retrying in ${delay}ms...`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
         const fallback = await maybeHandleOfflineApiFallback(path, init, { error: e });
         if (fallback !== null) return fallback;
         throw e;
+      }
     }
 
     if (!res.ok) {
@@ -1486,17 +1513,39 @@ async function apiJson(path, options) {
 async function apiUpload(path, formData) {
     const baseUrl = getApiBase();
     const fullPath = baseUrl + path;
-    const res = await fetch(fullPath, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-        cache: 'no-store',
-    });
-    if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new Error(`API ${res.status} ${res.statusText}${text ? `: ${text}` : ''}`);
+    const maxRetries = 2;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const res = await fetch(fullPath, {
+            method: 'POST',
+            body: formData,
+            credentials: 'include',
+            cache: 'no-store',
+        });
+
+        // Handle temporary service unavailability with retry
+        if (res.status === 503) {
+          if (attempt < maxRetries - 1) {
+            const delay = Math.pow(2, attempt) * 500;
+            console.warn(`[API] Got 503 for upload ${path}, retrying in ${delay}ms...`);
+            await new Promise(r => setTimeout(r, delay));
+            continue;
+          }
+        }
+
+        if (!res.ok) {
+            const text = await res.text().catch(() => '');
+            throw new Error(`API ${res.status} ${res.statusText}${text ? `: ${text}` : ''}`);
+        }
+        return res.json();
+      } catch (e) {
+        if (attempt === maxRetries - 1) throw e;
+        const delay = Math.pow(2, attempt) * 500;
+        console.warn(`[API] Upload error for ${path}, retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+      }
     }
-    return res.json();
 }
 
 async function sendAnalyticsEvent(type, nodeIndex, url) {

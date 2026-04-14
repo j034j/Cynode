@@ -23,7 +23,10 @@ function getRemotePrisma(): PrismaClient | null {
   const authToken = process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN;
 
   // Allow remote Prisma initialization on Vercel as long as the TURSO envs are present.
-  if (!url || !authToken) return null;
+  if (!url || !authToken) {
+    console.warn(`[Sync] Remote Prisma cannot be initialized: TURSO_DATABASE_URL=${!!url}, auth=${!!authToken}`);
+    return null;
+  }
 
   try {
     const adapter = new PrismaLibSQL({ url, authToken });
@@ -359,7 +362,14 @@ async function syncSharesWithConflictResolution(
 export async function pushUserWorkToCloud(userId: string) {
   const remote = getRemotePrisma();
   const local = await getPrisma();
-  if (!remote || !local) return;
+  if (!remote) {
+    console.warn(`[Sync] Skipping push for ${userId}: Remote database not configured`);
+    return;
+  }
+  if (!local) {
+    console.warn(`[Sync] Skipping push for ${userId}: Local database unavailable`);
+    return;
+  }
 
   try {
     const user = await local.user.findUnique({
@@ -391,14 +401,21 @@ export async function pushUserWorkToCloud(userId: string) {
     await syncSharesWithConflictResolution(remote, shares);
     console.log(`[Sync] Background push successful for user ${userId}`);
   } catch (err: any) {
-    console.warn(`[Sync] Background push failed:`, err.message);
+    console.warn(`[Sync] Background push failed for ${userId}:`, err.message);
   }
 }
 
 export async function pullUserWorkFromCloud(userId: string) {
   const remote = getRemotePrisma();
   const local = await getPrisma();
-  if (!remote || !local) return;
+  if (!remote) {
+    console.warn(`[Sync] Skipping pull for ${userId}: Remote database not configured`);
+    return;
+  }
+  if (!local) {
+    console.warn(`[Sync] Skipping pull for ${userId}: Local database unavailable`);
+    return;
+  }
 
   try {
     const remoteUser = await remote.user.findUnique({
@@ -430,7 +447,7 @@ export async function pullUserWorkFromCloud(userId: string) {
     await syncSharesWithConflictResolution(local, remoteShares);
     console.log(`[Sync] Background pull successful for user ${userId}`);
   } catch (err: any) {
-    console.warn(`[Sync] Background pull failed:`, err.message);
+    console.warn(`[Sync] Background pull failed for ${userId}:`, err.message);
   }
 }
 
