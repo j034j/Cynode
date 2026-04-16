@@ -403,6 +403,35 @@ function createMainWindow() {
   });
 
   void loadIntoWindow(mainWindow, resolveStartUrl());
+
+  // Diagnostic: log cookies after main window finishes loading
+  mainWindow.webContents.on('did-finish-load', async () => {
+    try {
+      const currentUrl = mainWindow.webContents.getURL();
+      console.log(`[CynodeDesktop:debug] Main window loaded: ${currentUrl}`);
+      const sess = session.fromPartition(WINDOW_PARTITION);
+      const allCookies = await sess.cookies.get({ url: currentUrl });
+      const sidCookie = allCookies.find(c => c.name === 'sid');
+      console.log(`[CynodeDesktop:debug] Total cookies for ${currentUrl}: ${allCookies.length}`);
+      console.log(`[CynodeDesktop:debug] Cookie names: ${allCookies.map(c => c.name).join(', ') || '(none)'}`);
+      if (sidCookie) {
+        console.log(`[CynodeDesktop:debug] sid cookie FOUND: domain=${sidCookie.domain}, path=${sidCookie.path}, secure=${sidCookie.secure}, httpOnly=${sidCookie.httpOnly}, sameSite=${sidCookie.sameSite}, expires=${sidCookie.expirationDate ? new Date(sidCookie.expirationDate * 1000).toISOString() : 'session'}, value-length=${sidCookie.value.length}`);
+      } else {
+        console.log(`[CynodeDesktop:debug] sid cookie NOT FOUND in partition ${WINDOW_PARTITION}`);
+        // Also check without URL filter
+        const globalCookies = await sess.cookies.get({});
+        const globalSid = globalCookies.find(c => c.name === 'sid');
+        if (globalSid) {
+          console.log(`[CynodeDesktop:debug] sid cookie EXISTS globally but not matching URL. domain=${globalSid.domain}, path=${globalSid.path}, secure=${globalSid.secure}`);
+        } else {
+          console.log(`[CynodeDesktop:debug] sid cookie does not exist at all in partition ${WINDOW_PARTITION}`);
+        }
+      }
+    } catch (err) {
+      console.warn('[CynodeDesktop:debug] Cookie diagnostic failed:', err);
+    }
+  });
+
   return mainWindow;
 }
 
@@ -679,6 +708,14 @@ app.whenReady().then(async () => {
   app.setAppUserModelId(APP_ID);
   app.setName('Cynode Desktop');
   registerProtocolClient();
+
+  // Diagnostic: watch for cookie changes in the desktop partition
+  const sess = session.fromPartition(WINDOW_PARTITION);
+  sess.cookies.on('changed', (event, cookie, cause, removed) => {
+    if (cookie.name === 'sid') {
+      console.log(`[CynodeDesktop:debug] sid cookie ${removed ? 'REMOVED' : 'SET'} | cause=${cause} | domain=${cookie.domain} | secure=${cookie.secure} | httpOnly=${cookie.httpOnly} | sameSite=${cookie.sameSite} | expires=${cookie.expirationDate ? new Date(cookie.expirationDate * 1000).toISOString() : 'session'} | value-length=${(cookie.value || '').length}`);
+    }
+  });
   await maybeResetDesktopWebCache();
   createMainWindow();
   if (pendingProtocolUrl) {

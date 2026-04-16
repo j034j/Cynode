@@ -92,14 +92,24 @@ function isProbablySecure(req: FastifyRequest): boolean {
 export async function loadUserFromSession(req: FastifyRequest): Promise<AuthUser | null> {
   req.authSessionLookupError = null;
 
+  const reqUrl = req.url || req.raw?.url || '(unknown)';
+  const hostHeader = req.headers.host || '(none)';
+  const origin = req.headers.origin || '(none)';
+  const cookieHeader = req.headers.cookie ? `present (${req.headers.cookie.length} chars)` : 'MISSING';
+  console.log(`[auth:debug] loadUserFromSession called for ${req.method} ${reqUrl} | host=${hostHeader} | origin=${origin} | cookie-header=${cookieHeader}`);
+
   // Validate host header to prevent host spoofing attacks
   if (!isHostAllowed(req)) {
-    console.warn("[auth] Request from disallowed host:", req.headers.host);
+    console.warn("[auth:debug] REJECTED — Request from disallowed host:", hostHeader, "| ALLOWED_HOSTS:", ALLOWED_HOSTS);
     return null;
   }
 
   const sid = req.cookies?.[SESSION_COOKIE];
-  if (typeof sid !== "string" || sid.length < 16) return null;
+  console.log(`[auth:debug] sid cookie: ${sid ? `present (${sid.length} chars, starts with ${sid.slice(0, 6)}...)` : 'MISSING/EMPTY'}`);
+  if (typeof sid !== "string" || sid.length < 16) {
+    console.log(`[auth:debug] No valid session cookie → returning null (anonymous request)`);
+    return null;
+  }
 
   try {
     const prisma = await getPrisma();
@@ -107,8 +117,15 @@ export async function loadUserFromSession(req: FastifyRequest): Promise<AuthUser
       where: { id: sid },
       include: { user: true },
     });
-    if (!session) return null;
-    if (session.expiresAt.getTime() <= Date.now()) return null;
+    if (!session) {
+      console.log(`[auth:debug] Session ID not found in database → stale/invalid cookie`);
+      return null;
+    }
+    if (session.expiresAt.getTime() <= Date.now()) {
+      console.log(`[auth:debug] Session EXPIRED: expiresAt=${session.expiresAt.toISOString()}, now=${new Date().toISOString()}`);
+      return null;
+    }
+    console.log(`[auth:debug] Session VALID for user ${session.user.handle} (${session.user.id}), expires ${session.expiresAt.toISOString()}`);
 
     return {
       id: session.user.id,
@@ -147,6 +164,12 @@ export async function createSessionAndSetCookie(
 
   const sid = crypto.randomBytes(24).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const secure = isProbablySecure(req);
+
+  console.log(`[auth:debug] createSessionAndSetCookie for userId=${userId}`);
+  console.log(`[auth:debug]   sid=${sid.slice(0, 6)}... | secure=${secure} | sameSite=lax | path=/ | httpOnly=true`);
+  console.log(`[auth:debug]   host=${req.headers.host} | x-forwarded-proto=${req.headers["x-forwarded-proto"] || '(none)'} | origin=${req.headers.origin || '(none)'}`);
+  console.log(`[auth:debug]   expiresAt=${expiresAt.toISOString()}`);
 
   const prisma = await getPrisma();
   await prisma.session.create({
@@ -157,9 +180,10 @@ export async function createSessionAndSetCookie(
     path: "/",
     httpOnly: true,
     sameSite: "lax",
-    secure: isProbablySecure(req),
+    secure,
     expires: expiresAt,
   });
+  console.log(`[auth:debug] Cookie set successfully via reply.setCookie`);
 }
 
 export async function clearSessionCookieAndDb(req: FastifyRequest, reply: FastifyReply): Promise<void> {

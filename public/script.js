@@ -1606,6 +1606,13 @@ async function apiJson(path, options) {
     const baseUrl = getApiBase();
     const fullPath = path.startsWith('http') ? path : baseUrl + path;
     
+    // Diagnostic logging for auth-related requests
+    const isAuthPath = path.includes('/api/v1/me') || path.includes('/api/v1/auth/') || path.includes('/api/v1/logout');
+    if (isAuthPath) {
+        const isDesktop = !!getDesktopBridge();
+        console.log(`[apiJson:debug] AUTH REQUEST: ${path} | fullPath=${fullPath} | platform=${isDesktop ? 'desktop-electron' : 'web'} | origin=${window.location.origin} | online=${navigator.onLine}`);
+    }
+
     const init = { ...(options || {}) };
     const body = init.body;
     const hasBody =
@@ -1661,14 +1668,24 @@ async function apiJson(path, options) {
 
     if (!res.ok) {
         const text = await res.text().catch(() => '');
+        if (isAuthPath) {
+            console.log(`[apiJson:debug] AUTH RESPONSE ERROR: ${path} | status=${res.status} ${res.statusText} | text=${text.slice(0, 200)}`);
+            console.log(`[apiJson:debug]   set-cookie header visible: ${res.headers.get('set-cookie') || '(not visible to JS — httpOnly)'}`);
+        }
         const fallback = await maybeHandleOfflineApiFallback(path, init, { status: res.status, text });
         if (fallback !== null) return fallback;
         throw createApiError(res.status, res.statusText, text);
     }
     const json = await res.json();
 
+    if (isAuthPath) {
+        console.log(`[apiJson:debug] AUTH RESPONSE OK: ${path} | status=${res.status} | user=${json && json.user ? json.user.handle || json.user.id : '(none)'}`);
+        console.log(`[apiJson:debug]   response headers: content-type=${res.headers.get('content-type')}, cache-control=${res.headers.get('cache-control')}`);
+    }
+
     if (path.includes('/api/v1/me')) {
         if (json && json.user) {
+            console.log(`[apiJson:debug] /api/v1/me returned user=${json.user.handle} — caching locally`);
             writeCachedMe(json);
             setOfflineSessionUser(json.user);
         }
@@ -5450,13 +5467,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Auth UI (optional)
     let me = null;
+    console.log(`[bootstrap:debug] Starting auth check | platform=${getDesktopBridge() ? 'desktop-electron' : 'web'} | origin=${window.location.origin} | online=${navigator.onLine}`);
     try {
         me = await apiJson('/api/v1/me', { method: 'GET' });
     } catch (e) {
+        console.log(`[bootstrap:debug] /api/v1/me FAILED:`, e);
         me = null;
     }
 
     const user = me && me.user ? me.user : null;
+    console.log(`[bootstrap:debug] Auth result: user=${user ? user.handle + ' (' + user.id + ')' : 'null'} | offline=${!!(me && me.offline)} | cachedUser=${getOfflineSessionUser() ? 'present' : 'none'}`);
     currentUser = user;
     pendingLastActiveGraphRestore = user
         ? (readLastActiveGraphForUser(user) || inferLastActiveGraphFromTopicOrigin())
@@ -5572,10 +5592,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 showAuthError('Please enter your email/handle and password.');
                 return;
             }
-            await apiJson('/api/v1/auth/login', {
+            console.log(`[login:debug:client] Attempting login for: ${identifier} | platform=${getDesktopBridge() ? 'desktop-electron' : 'web'} | origin=${window.location.origin}`);
+            const loginResult = await apiJson('/api/v1/auth/login', {
                 method: 'POST',
                 body: JSON.stringify({ identifier, password }),
             });
+            console.log(`[login:debug:client] Login API returned:`, loginResult);
+            console.log(`[login:debug:client] About to reload page to pick up session cookie...`);
             window.location.reload();
         } catch (e) {
             const status = e && e.status ? Number(e.status) : 0;

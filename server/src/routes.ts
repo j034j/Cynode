@@ -1493,6 +1493,7 @@ export async function registerRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
+      console.log(`[login:debug] Login attempt | identifier=${req.body.identifier} | host=${req.headers.host} | origin=${req.headers.origin || '(none)'} | user-agent=${(req.headers['user-agent'] || '').slice(0, 80)}`);
       const prisma = await getPrisma();
       const ident = req.body.identifier.trim().toLowerCase();
       let user =
@@ -1502,6 +1503,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
       // If not found locally, try to find and pull from remote (Turso)
       if (!user) {
+        console.log(`[login:debug] User not found locally, trying remote pull for: ${ident}`);
         const foundRemote = await findAndPullRemoteUser(ident);
         if (foundRemote) {
           user = ident.includes("@")
@@ -1511,10 +1513,13 @@ export async function registerRoutes(app: FastifyInstance) {
       }
 
       if (!user || !user.passwordHash || !verifyPassword(req.body.password, user.passwordHash)) {
+        console.log(`[login:debug] Login FAILED: ${!user ? 'user not found' : !user.passwordHash ? 'no password hash' : 'wrong password'} for ${ident}`);
         return reply.code(401).send({ error: "invalid_credentials" });
       }
 
+      console.log(`[login:debug] Login SUCCESS for ${user.handle} (${user.id}). Setting session cookie...`);
       await createSessionAndSetCookie(reply, req as any, user.id);
+      console.log(`[login:debug] Session cookie set. Checking reply headers:`, reply.getHeaders());
       
       // Attempt a short pull then push to synchronize accounts across devices.
       try {
@@ -1577,12 +1582,18 @@ export async function registerRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
+      console.log(`[me:debug] /api/v1/me called | user=${req.user ? req.user.handle : 'null'} | authError=${req.authSessionLookupError || 'none'} | host=${req.headers.host} | cookie-header=${req.headers.cookie ? 'present' : 'MISSING'}`);
       if (!req.user && req.authSessionLookupError) {
+        console.log(`[me:debug] Returning 503: session lookup had DB error`);
         return reply.code(503).send({ error: "session_unavailable" });
       }
 
       const user = (req as any).user ?? null;
-      if (!user) return { user: null, userPlan: null, organizations: [] };
+      if (!user) {
+        console.log(`[me:debug] Returning user=null (no session cookie or session not found)`);
+        return { user: null, userPlan: null, organizations: [] };
+      }
+      console.log(`[me:debug] Returning user=${user.handle} (${user.id})`);
 
       const prisma = await getPrisma();
       const userSub = await prisma.userSubscription.findUnique({ where: { userId: user.id } });
