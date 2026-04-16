@@ -7,6 +7,12 @@ type BridgeRequest = IncomingMessage & {
   method?: string;
 };
 
+function sendJson(res: ServerResponse, statusCode: number, body: unknown) {
+  res.statusCode = statusCode;
+  res.setHeader('content-type', 'application/json; charset=utf-8');
+  res.end(JSON.stringify(body));
+}
+
 // Cache successful DB health checks briefly to avoid hammering a cold database
 // on every request while still surfacing temporary unavailability as retryable 503s.
 let lastDbHealthTime = 0;
@@ -45,9 +51,11 @@ export default async function handler(req: BridgeRequest, res: ServerResponse) {
     if (req.url === '/api/server-bridge' && req.headers['x-now-route-matches'] === undefined) {
       const dbOk = await checkDbHealth();
       if (!dbOk) {
-        return res.status(503).json({ ok: false, error: 'Service Unavailable', message: 'Database unavailable' });
+        sendJson(res, 503, { ok: false, error: 'Service Unavailable', message: 'Database unavailable' });
+        return;
       }
-      return res.status(200).json({ ok: true, message: 'Server Bridge Active' });
+      sendJson(res, 200, { ok: true, message: 'Server Bridge Active' });
+      return;
     }
 
     if (req.method === 'GET' || req.method === 'HEAD') {
@@ -58,11 +66,12 @@ export default async function handler(req: BridgeRequest, res: ServerResponse) {
     } else {
       const dbOk = await checkDbHealth(300);
       if (!dbOk) {
-        return res.status(503).json({
+        sendJson(res, 503, {
           ok: false,
           error: 'Service Unavailable',
           message: 'Database temporarily unavailable. Please try again in a moment.',
         });
+        return;
       }
     }
 
@@ -70,7 +79,7 @@ export default async function handler(req: BridgeRequest, res: ServerResponse) {
     app.server.emit('request', req, res);
   } catch (err) {
     console.error('Server Bridge Error:', err);
-    res.status(500).json({
+    sendJson(res, 500, {
       error: 'Internal Server Error',
       message: err instanceof Error ? err.message : String(err),
     });

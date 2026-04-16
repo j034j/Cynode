@@ -10,7 +10,6 @@ import { registerBillingRoutes } from "./billing.js";
 import crypto from "node:crypto";
 import { getPlans, isUnlimitedUser, planByKey, addUsage, creditsForMediaBytes, creditsForSavedLink, monthPeriodStart, nextMonthPeriodStart } from "./usage.js";
 import { UAParser } from "ua-parser-js";
-import geoip from "geoip-lite";
 import { buildAppUrl, getPublicOrigin, getRequestProtocol } from "./origin.js";
 import { pushUserWorkToCloud, pullUserWorkFromCloud, findAndPullRemoteUser } from "./sync.js";
 
@@ -354,6 +353,19 @@ function safeDeltaPct(current: number, previous: number) {
   return Number((((current - previous) / previous) * 100).toFixed(2));
 }
 
+function readHeaderString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function readGeoHeaders(req: { headers: Record<string, unknown> }) {
+  const country = readHeaderString(req.headers["x-vercel-ip-country"])
+    ?? readHeaderString(req.headers["cf-ipcountry"]);
+  const city = readHeaderString(req.headers["x-vercel-ip-city"]);
+  return { country, city };
+}
+
 export async function registerRoutes(app: FastifyInstance) {
   // Public media serving (no auth): anyone with the share link can fetch these assets.
   app.get<{ Params: { id: string } }>(
@@ -466,9 +478,7 @@ export async function registerRoutes(app: FastifyInstance) {
       const browser = res.browser.name || null;
       const os = res.os.name || null;
 
-      const geo = ip ? geoip.lookup(ip) : null;
-      const country = geo ? geo.country : null;
-      const city = geo ? geo.city : null;
+      const { country, city } = readGeoHeaders(req as any);
 
       let refererSource = null;
       if (ref) {

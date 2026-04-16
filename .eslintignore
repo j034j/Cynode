@@ -3,3 +3,5 @@ public/qrcode-node.js
 legacy-extension/**
 public/play-desktop.js
 nodex/**
+public/vendor/**
+server/dist/**

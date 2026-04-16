@@ -46,7 +46,14 @@ async function getGithubUser(accessToken: string): Promise<GithubUser> {
     avatar_url: z.string().url().nullable(),
     email: z.string().email().nullable(),
   });
-  return schema.parse(json);
+  const parsed = schema.parse(json);
+  return {
+    id: parsed.id,
+    login: parsed.login,
+    name: parsed.name ?? null,
+    avatar_url: parsed.avatar_url ?? null,
+    email: parsed.email ?? null,
+  };
 }
 
 async function allocateUniqueHandle(base: string): Promise<string> {
