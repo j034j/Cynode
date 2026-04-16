@@ -455,6 +455,86 @@ function countPendingCloudSyncItems(user = currentUser) {
     return savedCount + graphCount;
 }
 
+// Session re-validation: when in offline mode, periodically re-check /api/v1/me
+// to transition back to a real signed-in state once the server recovers.
+let sessionRevalidationTimer = null;
+let sessionRevalidationAttempts = 0;
+const SESSION_REVALIDATION_MAX_ATTEMPTS = 8;
+
+function scheduleSessionRevalidation() {
+    if (sessionRevalidationTimer) return; // Already scheduled
+    sessionRevalidationAttempts = 0;
+    attemptSessionRevalidation();
+}
+
+function cancelSessionRevalidation() {
+    if (sessionRevalidationTimer) {
+        clearTimeout(sessionRevalidationTimer);
+        sessionRevalidationTimer = null;
+    }
+    sessionRevalidationAttempts = 0;
+}
+
+async function attemptSessionRevalidation() {
+    sessionRevalidationTimer = null;
+    if (!currentUser || !currentUser.isOffline) {
+        // Already have a real session or not signed in
+        cancelSessionRevalidation();
+        return;
+    }
+    if (!navigator.onLine) {
+        // Still offline, retry when online event fires
+        return;
+    }
+    sessionRevalidationAttempts++;
+    if (sessionRevalidationAttempts > SESSION_REVALIDATION_MAX_ATTEMPTS) {
+        console.warn('[Auth] Session re-validation: max attempts reached, giving up.');
+        cancelSessionRevalidation();
+        return;
+    }
+
+    try {
+        // Direct fetch (bypass apiJson to avoid offline fallback loop)
+        const res = await fetch('/api/v1/me', {
+            method: 'GET',
+            credentials: 'include',
+            cache: 'no-store',
+        });
+        if (res.ok) {
+            const json = await res.json();
+            if (json && json.user) {
+                console.log('[Auth] Session re-validated successfully, transitioning from offline to real session.');
+                currentUser = json.user;
+                writeCachedMe(json);
+                setOfflineSessionUser(json.user);
+                updateAccountProfileCard();
+                cancelSessionRevalidation();
+                // Refresh data now that we have a real session
+                if (typeof refreshSavedLinksFn === 'function') {
+                    try { await refreshSavedLinksFn(); } catch (_) {}
+                }
+                // Flush any queued offline mutations now that we have connectivity
+                void processPendingCloudSync();
+                return;
+            }
+            // Server returned user: null — session cookie is invalid/expired
+            console.log('[Auth] Session re-validation: server confirms no valid session. Clearing offline state.');
+            currentUser = null;
+            clearCachedAuthState();
+            updateAccountProfileCard();
+            cancelSessionRevalidation();
+            return;
+        }
+        // Non-ok response (503, etc.) — schedule retry with backoff
+    } catch (e) {
+        // Network error — schedule retry
+    }
+
+    const delay = Math.min(Math.pow(2, sessionRevalidationAttempts) * 2000, 60000);
+    console.log(`[Auth] Session re-validation attempt ${sessionRevalidationAttempts} failed, retrying in ${delay}ms`);
+    sessionRevalidationTimer = setTimeout(attemptSessionRevalidation, delay);
+}
+
 function isOfflineCapableError(error) {
     const msg = String(error && error.message ? error.message : error || '');
     return /Failed to fetch|NetworkError|Load failed|offline/i.test(msg);
@@ -646,7 +726,11 @@ async function maybeHandleOfflineApiFallback(path, init = {}, detail = {}) {
     const method = String(init.method || 'GET').toUpperCase();
     const status = Number(detail.status || 0);
     const text = String(detail.text || detail.message || '');
-    const allowSessionFallback = path.includes('/api/v1/me') && status === 503;
+    // Only allow /api/v1/me 503 fallback when the user had a REAL session
+    // (not an offline-created fake session). A real cached user has no `isLocalOnly` flag.
+    const cachedUser = getOfflineSessionUser();
+    const hadRealSession = cachedUser && !cachedUser.isLocalOnly && !cachedUser.isOffline;
+    const allowSessionFallback = path.includes('/api/v1/me') && status === 503 && hadRealSession;
     const offlineLike = !navigator.onLine || allowSessionFallback || isOfflineCapableResponse(status, text) || isOfflineCapableError(detail.error || text);
     if (!offlineLike) return null;
 
@@ -657,7 +741,10 @@ async function maybeHandleOfflineApiFallback(path, init = {}, detail = {}) {
 
     if (path.includes('/api/v1/me')) {
         const offlineUser = getOfflineSessionUser();
-        if (offlineUser) {
+        if (offlineUser && !offlineUser.isLocalOnly) {
+            // Schedule a background re-validation to transition out of offline mode
+            // as soon as the server is reachable again.
+            scheduleSessionRevalidation();
             return {
                 user: { 
                     ...offlineUser, 
@@ -673,33 +760,14 @@ async function maybeHandleOfflineApiFallback(path, init = {}, detail = {}) {
     }
 
     if (path.includes('/api/v1/auth/login') || path.includes('/api/v1/auth/register')) {
-        const cached = readCachedMe();
-        const cachedUser = cached && cached.user ? cached.user : null;
-        const ident = String(bodyJson.identifier || bodyJson.email || bodyJson.handle || '').trim().toLowerCase();
-        let offlineUser = null;
+        // NEVER silently create a fake offline session for login/register.
+        // If the server is temporarily unavailable, propagate the error so the
+        // user sees "Sign in failed" and can retry when the backend recovers.
+        // Creating fake offline sessions caused users to appear signed in with
+        // no real server session, breaking all authenticated API calls.
+        console.warn('[Auth] Login/register failed due to server unavailability. Not creating offline session.', { status, text });
+        return null;
 
-        if (cachedUser) {
-            const handle = String(cachedUser.handle || '').trim().toLowerCase();
-            const email = String(cachedUser.email || '').trim().toLowerCase();
-            if (!ident || ident === handle || (email && ident === email)) {
-                offlineUser = { ...cachedUser, isOffline: true };
-            }
-        }
-
-        if (!offlineUser) {
-            const fallbackHandle = bodyJson.handle || bodyJson.identifier || (bodyJson.email ? String(bodyJson.email).split('@')[0] : 'offline_user');
-            offlineUser = {
-                id: `offline_${Date.now()}`,
-                handle: String(fallbackHandle || 'offline_user'),
-                displayName: bodyJson.displayName || null,
-                email: bodyJson.email || null,
-                isOffline: true,
-                isLocalOnly: true,
-            };
-        }
-
-        setOfflineSessionUser(offlineUser);
-        return { success: true, user: offlineUser, offline: true };
     }
 
     if (path.includes('/api/v1/logout')) {
@@ -5487,6 +5555,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         desktopViewerState = { nodeId: null, url: '', title: '' };
         clearExplicitSaveBaseline();
         clearCachedAuthState();
+        cancelSessionRevalidation();
 
         window.location.reload();
     });
@@ -5509,7 +5578,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             window.location.reload();
         } catch (e) {
-            showAuthError('Sign in failed. Check your credentials and try again.');
+            const status = e && e.status ? Number(e.status) : 0;
+            if (status === 503 || status === 502 || status === 504) {
+                showAuthError('The server is temporarily unavailable. Please wait a moment and try again.');
+            } else if (status === 401) {
+                showAuthError('Sign in failed. Check your credentials and try again.');
+            } else {
+                showAuthError('Sign in failed. Check your connection and try again.');
+            }
             console.warn('Sign in failed', e);
         }
     });
@@ -5530,7 +5606,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             window.location.reload();
         } catch (e) {
-            showAuthError('Sign up failed. That handle/email may already be taken.');
+            const status = e && e.status ? Number(e.status) : 0;
+            if (status === 503 || status === 502 || status === 504) {
+                showAuthError('The server is temporarily unavailable. Please wait a moment and try again.');
+            } else {
+                showAuthError('Sign up failed. That handle/email may already be taken.');
+            }
             console.warn('Sign up failed', e);
         }
     });
@@ -5538,6 +5619,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('online', () => {
         void processPendingCloudSync();
         void refreshCloudBackedEditorState({ force: true });
+        // Re-validate offline sessions when connectivity returns
+        if (currentUser && currentUser.isOffline) {
+            void attemptSessionRevalidation();
+        }
         // Also flush the new IndexedDB sync queue when coming online
         if (typeof flushSyncQueue === 'function') {
             void flushSyncQueue();
@@ -5545,10 +5630,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     window.addEventListener('focus', () => {
         void refreshCloudBackedEditorState();
+        // Re-validate offline sessions on window focus
+        if (currentUser && currentUser.isOffline) {
+            void attemptSessionRevalidation();
+        }
     });
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
             void refreshCloudBackedEditorState();
+            // Re-validate offline sessions when becoming visible
+            if (currentUser && currentUser.isOffline) {
+                void attemptSessionRevalidation();
+            }
         }
     });
 

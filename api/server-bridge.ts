@@ -67,14 +67,27 @@ export default async function handler(req: BridgeRequest, res: ServerResponse) {
         console.warn(`[ServerBridge] Proceeding with degraded DB health for ${req.method} ${req.url}`);
       }
     } else {
-      const dbOk = await checkDbHealth(300);
+      // Auth endpoints (login, register, logout) need more generous timeouts
+      // because blocking them causes cascading failures: the client creates
+      // fake offline sessions that persist across page reloads.
+      const url = req.url || '';
+      const isAuthEndpoint = url.includes('/api/v1/auth/');
+      const timeoutMs = isAuthEndpoint ? 2000 : 1500;
+      const dbOk = await checkDbHealth(timeoutMs);
       if (!dbOk) {
-        sendJson(res, 503, {
-          ok: false,
-          error: 'Service Unavailable',
-          message: 'Database temporarily unavailable. Please try again in a moment.',
-        });
-        return;
+        // For auth endpoints, let Fastify handle the request anyway — it will
+        // return a proper error from the DB layer rather than a generic 503
+        // that triggers the client's offline fallback.
+        if (isAuthEndpoint) {
+          console.warn(`[ServerBridge] DB health degraded but proceeding with auth request: ${req.method} ${url}`);
+        } else {
+          sendJson(res, 503, {
+            ok: false,
+            error: 'Service Unavailable',
+            message: 'Database temporarily unavailable. Please try again in a moment.',
+          });
+          return;
+        }
       }
     }
 
