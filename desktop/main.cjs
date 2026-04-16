@@ -4,7 +4,7 @@ const { app, BrowserWindow, WebContentsView, ipcMain, shell, dialog, protocol, s
 
 const PROTOCOL = 'cynode';
 const APP_ID = 'com.cynode.desktop';
-const DEFAULT_DEV_URL = 'http://127.0.0.1:3001/';
+const DEFAULT_DEV_URL = 'http://localhost:3001/';
 const DEFAULT_REMOTE_URL = 'https://cynode.vercel.app/';
 const WINDOW_PARTITION = 'persist:cynode-desktop';
 const DESKTOP_WEB_CACHE_VERSION = 'desktop-web-cache-v4';

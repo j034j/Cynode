@@ -14,7 +14,14 @@ export type GraphState = {
 };
 
 const graphs = new Map<string, GraphState>();
-const shares = new Map<string, { graphId: string; createdAt: string; topic: string | null }>();
+const shares = new Map<string, {
+  graphId: string;
+  createdAt: string;
+  topic: string | null;
+  createdByUserId: string | null;
+  organizationId: string | null;
+  saved: boolean;
+}>();
 
 const SHARE_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 function randomShareCode(length = 8): string {
@@ -332,7 +339,14 @@ export async function createShareFromGraphState(
   for (let attempt = 0; attempt < 10; attempt++) {
     const code = randomShareCode(8);
     if (shares.has(code)) continue;
-    shares.set(code, { graphId: graph.id, createdAt, topic });
+    shares.set(code, {
+      graphId: graph.id,
+      createdAt,
+      topic,
+      createdByUserId,
+      organizationId,
+      saved,
+    });
     return { code, graphId: graph.id, createdByUserId, organizationId, topic, saved, createdAt };
   }
   throw new Error("failed_to_allocate_share_code");
@@ -340,21 +354,43 @@ export async function createShareFromGraphState(
 
 export async function getGraphByShareCode(
   code: string,
-): Promise<(GraphState & { shareCreatedAt: string; topic: string | null }) | null> {
+): Promise<(
+  GraphState & {
+    shareCreatedAt: string;
+    topic: string | null;
+    createdByUserId: string | null;
+    organizationId: string | null;
+    saved: boolean;
+  }
+) | null> {
   if (isDbEnabled()) {
     const prisma = await getPrisma();
     const share = await prisma.share.findUnique({ where: { code } });
     if (!share) return null;
     const graph = await getGraph(share.graphId);
     if (!graph) return null;
-    return { ...graph, shareCreatedAt: share.createdAt.toISOString(), topic: share.topic ?? null };
+    return {
+      ...graph,
+      shareCreatedAt: share.createdAt.toISOString(),
+      topic: share.topic ?? null,
+      createdByUserId: share.createdByUserId ?? null,
+      organizationId: share.organizationId ?? null,
+      saved: share.saved === true,
+    };
   }
 
   const s = shares.get(code);
   if (!s) return null;
   const graph = await getGraph(s.graphId);
   if (!graph) return null;
-  return { ...graph, shareCreatedAt: s.createdAt, topic: s.topic ?? null };
+  return {
+    ...graph,
+    shareCreatedAt: s.createdAt,
+    topic: s.topic ?? null,
+    createdByUserId: s.createdByUserId ?? null,
+    organizationId: s.organizationId ?? null,
+    saved: s.saved === true,
+  };
 }
 
 function clampInt(value: number, min: number, max: number): number {

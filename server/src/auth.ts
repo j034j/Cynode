@@ -90,6 +90,8 @@ function isProbablySecure(req: FastifyRequest): boolean {
 }
 
 export async function loadUserFromSession(req: FastifyRequest): Promise<AuthUser | null> {
+  req.authSessionLookupError = null;
+
   // Validate host header to prevent host spoofing attacks
   if (!isHostAllowed(req)) {
     console.warn("[auth] Request from disallowed host:", req.headers.host);
@@ -121,6 +123,7 @@ export async function loadUserFromSession(req: FastifyRequest): Promise<AuthUser
     const isDbError = /ECONNREFUSED|ENOTFOUND|payload|wire|timeout/i.test(msg);
     if (isDbError) {
       console.error("[auth] CRITICAL DB ERROR during session lookup:", msg, err);
+      req.authSessionLookupError = msg;
     } else {
       console.warn("[auth] Session lookup failed (stale cookie or transient error):", msg);
     }
@@ -185,4 +188,5 @@ export function requireUser(req: FastifyRequest): asserts req is FastifyRequest 
 
 export function registerAuthDecorators(app: FastifyInstance) {
   app.decorateRequest("user", null);
+  app.decorateRequest("authSessionLookupError", null);
 }

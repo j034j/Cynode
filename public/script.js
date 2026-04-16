@@ -460,6 +460,12 @@ function isOfflineCapableError(error) {
     return /Failed to fetch|NetworkError|Load failed|offline/i.test(msg);
 }
 
+function isDeferredSyncError(error) {
+    if (isOfflineCapableError(error)) return true;
+    const status = Number(error && error.status ? error.status : 0);
+    return status === 0 || status === 502 || status === 503 || status === 504;
+}
+
 function isOfflineCapableResponse(status, text = '') {
     // Only treat persistent network errors as offline (502, 504).
     // 503 (Service Unavailable) should retry — it's usually temporary (cold database, Turso recovery, etc.)
@@ -491,6 +497,7 @@ function queuePendingSavedCreate({ snapshot, organizationId, topic, user = curre
         type: 'create',
         placeholderCode: buildPendingId('offline'),
         snapshot: cloneSerializable(snapshot),
+        mediaScopeKey: voiceScopeKey(),
         organizationId: organizationId || null,
         topic: topic || null,
         queuedAt: new Date().toISOString(),
@@ -509,6 +516,7 @@ function queuePendingSavedUpdate({ code, snapshot, topic, user = currentUser } =
         if (existingCreate) {
             existingCreate.snapshot = cloneSerializable(snapshot);
             existingCreate.topic = topic || null;
+            existingCreate.mediaScopeKey = existingCreate.mediaScopeKey || voiceScopeKey();
             existingCreate.updatedAt = new Date().toISOString();
             writePendingSavedActions(actions, user);
             return existingCreate;
@@ -520,6 +528,7 @@ function queuePendingSavedUpdate({ code, snapshot, topic, user = currentUser } =
     if (existingUpdate) {
         existingUpdate.snapshot = cloneSerializable(snapshot);
         existingUpdate.topic = topic || null;
+        existingUpdate.mediaScopeKey = existingUpdate.mediaScopeKey || voiceScopeKey();
         existingUpdate.updatedAt = new Date().toISOString();
         writePendingSavedActions(actions, user);
         return existingUpdate;
@@ -530,6 +539,7 @@ function queuePendingSavedUpdate({ code, snapshot, topic, user = currentUser } =
         type: 'update',
         code: normalizedCode,
         snapshot: cloneSerializable(snapshot),
+        mediaScopeKey: voiceScopeKey(),
         topic: topic || null,
         queuedAt: new Date().toISOString(),
     };
@@ -559,6 +569,15 @@ function updateAccountProfileCard() {
     const pendingCount = countPendingCloudSyncItems(currentUser);
     const isOfflineSession = !!currentUser.isOffline;
     const isDesktop = !!getDesktopBridge();
+    let desktopSourceLabel = '';
+
+    if (isDesktop && desktopAppInfo && desktopAppInfo.startUrl) {
+        try {
+            desktopSourceLabel = new URL(String(desktopAppInfo.startUrl)).origin;
+        } catch (_) {
+            desktopSourceLabel = String(desktopAppInfo.startUrl || '');
+        }
+    }
 
     card.style.display = '';
     nameEl.textContent = currentUser.displayName || currentUser.handle || 'Cynode user';
@@ -573,9 +592,53 @@ function updateAccountProfileCard() {
     } else if (pendingCount > 0) {
         stateEl.textContent = `${pendingCount} queued change${pendingCount === 1 ? '' : 's'} waiting for cloud sync.`;
     } else if (isDesktop) {
-        stateEl.textContent = 'Desktop account session is ready. Manage Account and saved work stay aligned with the web app.';
+        stateEl.textContent = desktopSourceLabel
+            ? `Desktop account session is ready on ${desktopSourceLabel}. Manage Account and saved work stay aligned with that Cynode backend.`
+            : 'Desktop account session is ready. Manage Account and saved work stay aligned with the web app.';
     } else {
         stateEl.textContent = 'Account connected. Saved graphs and profile changes sync through the same Cynode backend.';
+    }
+}
+
+async function primeDesktopAppInfo() {
+    const desktop = getDesktopBridge();
+    if (!desktop || typeof desktop.getAppInfo !== 'function') return null;
+    try {
+        desktopAppInfo = await desktop.getAppInfo();
+        updateAccountProfileCard();
+        return desktopAppInfo;
+    } catch (error) {
+        console.warn('Unable to read desktop app info.', error);
+        return null;
+    }
+}
+
+async function maybeAutoHydrateDesktopSavedGraph({ force = false } = {}) {
+    if (!getDesktopBridge() || desktopSavedHydrationInFlight) return false;
+    if (!initialWorkspaceLoaded && !force) return false;
+    if (!currentUser || activeShareCode || pendingLastActiveGraphRestore) return false;
+    if (currentSavedShareCode && !force) return false;
+    if (!force && hasMeaningfulGraphContent()) return false;
+
+    const latestSaved = Array.isArray(currentSavedLinksCache)
+        ? currentSavedLinksCache.find((item) => item && item.code)
+        : null;
+    if (!latestSaved || !latestSaved.code) return false;
+
+    desktopSavedHydrationInFlight = true;
+    try {
+        await loadSavedOrSharedGraphIntoEditor(latestSaved.code, {
+            origin: 'saved',
+            enableShareAnalytics: false,
+            editableAsShared: false,
+            shareUrl: latestSaved.shareUrl || null,
+        });
+        return true;
+    } catch (error) {
+        console.warn('Desktop auto-hydration of saved nodegraph failed.', error);
+        return false;
+    } finally {
+        desktopSavedHydrationInFlight = false;
     }
 }
 
@@ -583,7 +646,8 @@ async function maybeHandleOfflineApiFallback(path, init = {}, detail = {}) {
     const method = String(init.method || 'GET').toUpperCase();
     const status = Number(detail.status || 0);
     const text = String(detail.text || detail.message || '');
-    const offlineLike = !navigator.onLine || isOfflineCapableResponse(status, text) || isOfflineCapableError(detail.error || text);
+    const allowSessionFallback = path.includes('/api/v1/me') && status === 503;
+    const offlineLike = !navigator.onLine || allowSessionFallback || isOfflineCapableResponse(status, text) || isOfflineCapableError(detail.error || text);
     if (!offlineLike) return null;
 
     let bodyJson = {};
@@ -660,6 +724,9 @@ let explicitSaveBaselineSignature = '';
 let cloudRefreshInFlight = false;
 let lastCloudRefreshAt = 0;
 let desktopViewerState = { nodeId: null, url: '', title: '' };
+let desktopAppInfo = null;
+let initialWorkspaceLoaded = false;
+let desktopSavedHydrationInFlight = false;
 
 // Playback media state
 
@@ -821,6 +888,10 @@ function getLastActiveGraphStorageKey(user = currentUser) {
     return scope ? `${LAST_ACTIVE_GRAPH_KEY_PREFIX}${scope}` : null;
 }
 
+function isCanonicalShareCode(value) {
+    return /^[0-9A-Za-z]{4,32}$/.test(String(value || '').trim());
+}
+
 function readLastActiveGraphForUser(user = currentUser) {
     const storageKey = getLastActiveGraphStorageKey(user);
     if (!storageKey) return null;
@@ -829,8 +900,13 @@ function readLastActiveGraphForUser(user = currentUser) {
         if (!raw) return null;
         const parsed = JSON.parse(raw);
         if (!parsed || typeof parsed !== 'object' || !parsed.code) return null;
+        const normalizedCode = String(parsed.code).trim();
+        if (!isCanonicalShareCode(normalizedCode)) {
+            localStorage.removeItem(storageKey);
+            return null;
+        }
         return {
-            code: String(parsed.code),
+            code: normalizedCode,
             origin: parsed.origin === 'share' ? 'share' : 'saved',
             shareUrl: parsed.shareUrl ? String(parsed.shareUrl) : null,
             updatedAt: parsed.updatedAt ? String(parsed.updatedAt) : null,
@@ -846,12 +922,12 @@ function inferLastActiveGraphFromTopicOrigin(origin = graphTopicOrigin) {
 
     if (raw.startsWith('saved:')) {
         const code = raw.slice(6).trim();
-        return code ? { code, origin: 'saved', updatedAt: null } : null;
+        return isCanonicalShareCode(code) ? { code, origin: 'saved', updatedAt: null } : null;
     }
 
     if (raw.startsWith('share:')) {
         const code = raw.slice(6).trim();
-        return code ? { code, origin: 'share', updatedAt: null } : null;
+        return isCanonicalShareCode(code) ? { code, origin: 'share', updatedAt: null } : null;
     }
 
     return null;
@@ -861,7 +937,11 @@ function writeLastActiveGraphForUser(code, { origin = 'saved', shareUrl = null, 
     const storageKey = getLastActiveGraphStorageKey(user);
     const normalizedCode = String(code || '').trim();
     const normalizedShareUrl = typeof shareUrl === 'string' && shareUrl.trim() ? shareUrl.trim() : null;
-    if (!storageKey || !normalizedCode) return;
+    if (!storageKey) return;
+    if (!isCanonicalShareCode(normalizedCode)) {
+        try { localStorage.removeItem(storageKey); } catch (_) { }
+        return;
+    }
     try {
         localStorage.setItem(storageKey, JSON.stringify({
             code: normalizedCode,
@@ -917,8 +997,17 @@ function voiceScopeKey() {
     return id ? `graph:${id}` : 'graph:local';
 }
 
+function normalizeMediaScopeKey(scopeKey) {
+    const normalized = String(scopeKey || '').trim();
+    return normalized || voiceScopeKey();
+}
+
+function voiceKeyForNodeInScope(scopeKey, nodeId) {
+    return `${normalizeMediaScopeKey(scopeKey)}:node:${nodeId}`;
+}
+
 function voiceKeyForNode(nodeId) {
-    return `${voiceScopeKey()}:node:${nodeId}`;
+    return voiceKeyForNodeInScope(voiceScopeKey(), nodeId);
 }
 
 async function idbGet(storeName, key) {
@@ -973,28 +1062,32 @@ async function resolveLocalFileToObjectUrl(localUrl) {
     return objUrl;
 }
 
-async function voiceGetBlobForNode(nodeId) {
+async function voiceGetBlobForNode(nodeId, { scopeKey } = {}) {
     try {
-        return await idbGet('recordings', voiceKeyForNode(nodeId));
+        return await idbGet('recordings', voiceKeyForNodeInScope(scopeKey || voiceScopeKey(), nodeId));
     } catch (_) {
         return null;
     }
 }
 
-function bgAudioKey() {
-    return `${voiceScopeKey()}:bgAudio`;
+function bgAudioKeyForScope(scopeKey) {
+    return `${normalizeMediaScopeKey(scopeKey)}:bgAudio`;
 }
 
-async function bgGetBlob() {
-    try { return await idbGet('recordings', bgAudioKey()); } catch (_) { return null; }
+function bgAudioKey() {
+    return bgAudioKeyForScope(voiceScopeKey());
+}
+
+async function bgGetBlob({ scopeKey } = {}) {
+    try { return await idbGet('recordings', bgAudioKeyForScope(scopeKey || voiceScopeKey())); } catch (_) { return null; }
 }
 
 async function bgSetBlob(blob) {
-    return await idbPut('recordings', bgAudioKey(), blob);
+    return await idbPut('recordings', bgAudioKeyForScope(voiceScopeKey()), blob);
 }
 
 async function bgClearBlob() {
-    return await idbDel('recordings', bgAudioKey());
+    return await idbDel('recordings', bgAudioKeyForScope(voiceScopeKey()));
 }
 
 function ensureBgAudioEl() {
@@ -1683,51 +1776,51 @@ function applySharedReadOnlyMode() {
     });
 }
 
-async function uploadSavedMedia(code, exportSnapshot, { topic } = {}) {
+async function uploadSavedMedia(code, exportSnapshot, { topic, mediaScopeKey } = {}) {
     if (!code) return { portableSnapshot: exportSnapshot || null, replacedLocalFiles: false };
     const nodeIndexMap = exportSnapshot && exportSnapshot.nodeIndexMap ? exportSnapshot.nodeIndexMap : {};
     const portableNodeUrls = exportSnapshot && exportSnapshot.nodeUrls
         ? { ...exportSnapshot.nodeUrls }
         : {};
     let replacedLocalFiles = false;
+    let deferred = false;
+    const effectiveMediaScopeKey = normalizeMediaScopeKey(mediaScopeKey);
 
     // Background audio: only upload when a local file is selected (URL sources cannot be reliably fetched due to CORS/SSRF).
-    if (bgAudioEnabled && bgAudioSource === 'file') {
-        const blob = await bgGetBlob().catch(() => null);
-        if (blob) {
-            const fd = new FormData();
-            fd.append('file', blob, 'background.webm');
-            try {
-                const res = await apiUpload(`/api/v1/saved/${encodeURIComponent(code)}/media/background`, fd);
-                if (res && res.url) remoteMedia.background = res;
-                if (bgAudioStatusEl) bgAudioStatusEl.textContent = 'Background audio published to saved link.';
-            } catch (e) {
-                console.warn('Background audio upload failed', e);
-                if (bgAudioStatusEl) bgAudioStatusEl.textContent = 'Background audio upload failed.';
-            }
+    const backgroundBlob = await bgGetBlob({ scopeKey: effectiveMediaScopeKey }).catch(() => null);
+    if (backgroundBlob) {
+        const fd = new FormData();
+        fd.append('file', backgroundBlob, 'background.webm');
+        try {
+            const res = await apiUpload(`/api/v1/saved/${encodeURIComponent(code)}/media/background`, fd);
+            if (res && res.url) remoteMedia.background = res;
+            if (bgAudioStatusEl) bgAudioStatusEl.textContent = 'Background audio published to saved link.';
+        } catch (e) {
+            console.warn('Background audio upload failed', e);
+            if (isDeferredSyncError(e)) deferred = true;
+            if (bgAudioStatusEl) bgAudioStatusEl.textContent = 'Background audio upload failed.';
         }
     }
 
     // Voice annotations: upload any node recordings found locally.
-    if (voiceEnabled) {
-        const voiceByNode = {};
-        for (const [oldNodeIdRaw, newNodeId] of Object.entries(nodeIndexMap)) {
-            const oldNodeId = Number(oldNodeIdRaw);
-            const blob = await voiceGetBlobForNode(oldNodeId).catch(() => null);
-            if (!blob) continue;
-            const fd = new FormData();
-            fd.append('file', blob, `node-${newNodeId}.webm`);
-            try {
-                const res = await apiUpload(`/api/v1/saved/${encodeURIComponent(code)}/media/voice/${newNodeId}`, fd);
-                if (res && res.url) voiceByNode[String(newNodeId)] = res;
-            } catch (e) {
-                console.warn(`Voice upload failed for node ${oldNodeId}`, e);
-            }
+    const voiceByNode = {};
+    for (const [oldNodeIdRaw, newNodeId] of Object.entries(nodeIndexMap)) {
+        const oldNodeId = Number(oldNodeIdRaw);
+        const blob = await voiceGetBlobForNode(oldNodeId, { scopeKey: effectiveMediaScopeKey }).catch(() => null);
+        if (!blob) continue;
+        const fd = new FormData();
+        fd.append('file', blob, `node-${newNodeId}.webm`);
+        try {
+            const res = await apiUpload(`/api/v1/saved/${encodeURIComponent(code)}/media/voice/${newNodeId}`, fd);
+            if (res && res.url) voiceByNode[String(newNodeId)] = res;
+        } catch (e) {
+            console.warn(`Voice upload failed for node ${oldNodeId}`, e);
+            if (isDeferredSyncError(e)) deferred = true;
         }
-        if (Object.keys(voiceByNode).length > 0) {
-            remoteMedia.voiceByNode = { ...(remoteMedia.voiceByNode || {}), ...voiceByNode };
-            if (voiceStatusEl) voiceStatusEl.textContent = 'Voice annotations published to saved link.';
-        }
+    }
+    if (Object.keys(voiceByNode).length > 0) {
+        remoteMedia.voiceByNode = { ...(remoteMedia.voiceByNode || {}), ...voiceByNode };
+        if (voiceStatusEl) voiceStatusEl.textContent = 'Voice annotations published to saved link.';
     }
 
     // Node files: upload any local files assigned to nodes.
@@ -1752,6 +1845,7 @@ async function uploadSavedMedia(code, exportSnapshot, { topic } = {}) {
                 }
             } catch (e) {
                 console.warn(`Local file upload failed for node ${oldNodeId}`, e);
+                if (isDeferredSyncError(e)) deferred = true;
             }
         }
     }
@@ -1764,15 +1858,23 @@ async function uploadSavedMedia(code, exportSnapshot, { topic } = {}) {
         : null;
 
     if (portableSnapshot && replacedLocalFiles) {
-        await apiJson(`/api/v1/saved/${encodeURIComponent(code)}`, {
-            method: 'PUT',
-            body: JSON.stringify(buildSavedPayload(portableSnapshot, {
-                topic: topic || undefined,
-            })),
-        });
+        try {
+            await apiJson(`/api/v1/saved/${encodeURIComponent(code)}`, {
+                method: 'PUT',
+                body: JSON.stringify(buildSavedPayload(portableSnapshot, {
+                    topic: topic || undefined,
+                })),
+            });
+        } catch (e) {
+            if (isDeferredSyncError(e)) {
+                deferred = true;
+            } else {
+                throw e;
+            }
+        }
     }
 
-    return { portableSnapshot, replacedLocalFiles };
+    return { portableSnapshot, replacedLocalFiles, deferred };
 }
 
 function buildSavedPayload(exportSnapshot, extras = {}) {
@@ -1798,7 +1900,7 @@ async function saveNodegraphToAccount(exportSnapshot, { organizationId, topic } 
         clearPendingGraphSync(currentUser);
         return { queued: false, ...response };
     } catch (error) {
-        if (!isOfflineCapableError(error)) throw error;
+        if (!isDeferredSyncError(error)) throw error;
         const queued = queuePendingSavedCreate({ snapshot: exportSnapshot, organizationId, topic });
         queueGraphSnapshotForSync(buildSavedPayload(exportSnapshot), { user: currentUser });
         updateAccountProfileCard();
@@ -1806,7 +1908,7 @@ async function saveNodegraphToAccount(exportSnapshot, { organizationId, topic } 
             queued: true,
             code: queued.placeholderCode,
             shareUrl: null,
-            message: 'Saved offline. Cynode will publish it to your account after reconnect.',
+            message: 'Saved locally. Cynode will publish it to your account after the backend reconnects.',
         };
     }
 }
@@ -1821,7 +1923,7 @@ async function updateSavedNodegraphInAccount(code, exportSnapshot, { topic } = {
         });
         return { queued: false, ...response };
     } catch (error) {
-        if (!isOfflineCapableError(error)) throw error;
+        if (!isDeferredSyncError(error)) throw error;
         const queued = queuePendingSavedUpdate({ code, snapshot: exportSnapshot, topic });
         queueGraphSnapshotForSync(buildSavedPayload(exportSnapshot), { user: currentUser });
         updateAccountProfileCard();
@@ -1830,8 +1932,8 @@ async function updateSavedNodegraphInAccount(code, exportSnapshot, { topic } = {
             code: queued.placeholderCode || queued.code || code,
             shareUrl: null,
             message: String(code || '').startsWith('offline_')
-                ? 'Saved offline draft updated. Cynode will sync it after reconnect.'
-                : 'Saved changes queued offline. Cynode will update the cloud version after reconnect.',
+                ? 'Saved local draft updated. Cynode will sync it after the backend reconnects.'
+                : 'Saved changes queued locally. Cynode will update the cloud version after the backend reconnects.',
         };
     }
 }
@@ -1968,7 +2070,7 @@ async function processPendingCloudSync() {
                 clearPendingGraphSync(syncUser);
                 changed = true;
             } catch (error) {
-                if (!isOfflineCapableError(error)) {
+                if (!isDeferredSyncError(error)) {
                     console.warn('[SyncQueue] Graph sync failed:', error);
                 }
             }
@@ -1990,13 +2092,24 @@ async function processPendingCloudSync() {
                             })),
                         });
                         if (response && response.code) {
-                            try { await uploadSavedMedia(response.code, action.snapshot, { topic: action.topic || undefined }); } catch (_) { }
+                            const mediaResult = await uploadSavedMedia(response.code, action.snapshot, {
+                                topic: action.topic || undefined,
+                                mediaScopeKey: action.mediaScopeKey,
+                            });
                             if (currentSavedShareCode === action.placeholderCode) {
                                 currentSavedShareCode = response.code;
                                 currentSavedShareUrl = response.shareUrl || createSavedGraphUrl(response.code);
                                 graphTopicOrigin = `saved:${response.code}`;
                                 writeLastActiveGraphForUser(response.code, { origin: 'saved', shareUrl: currentSavedShareUrl, user: syncUser });
                                 updateUpdateSavedButton();
+                            }
+                            if (mediaResult && mediaResult.deferred) {
+                                remaining.push({
+                                    ...action,
+                                    type: 'update',
+                                    code: response.code,
+                                    updatedAt: new Date().toISOString(),
+                                });
                             }
                             changed = true;
                             continue;
@@ -2008,16 +2121,25 @@ async function processPendingCloudSync() {
                                 topic: action.topic || undefined,
                             })),
                         });
-                        try { await uploadSavedMedia(action.code, action.snapshot, { topic: action.topic || undefined }); } catch (_) { }
+                        const mediaResult = await uploadSavedMedia(action.code, action.snapshot, {
+                            topic: action.topic || undefined,
+                            mediaScopeKey: action.mediaScopeKey,
+                        });
                         if (response && response.shareUrl && currentSavedShareCode === action.code) {
                             currentSavedShareUrl = response.shareUrl;
                             writeLastActiveGraphForUser(action.code, { origin: 'saved', shareUrl: currentSavedShareUrl, user: syncUser });
+                        }
+                        if (mediaResult && mediaResult.deferred) {
+                            remaining.push({
+                                ...action,
+                                updatedAt: new Date().toISOString(),
+                            });
                         }
                         changed = true;
                         continue;
                     }
                 } catch (error) {
-                    if (!isOfflineCapableError(error)) {
+                    if (!isDeferredSyncError(error)) {
                         console.warn('[SyncQueue] Saved item sync failed permanently:', error);
                         continue; // Drop the action to prevent endless spinning
                     }
@@ -4660,6 +4782,11 @@ async function restoreLastActiveGraphForSignedInUser() {
     const restoreTarget = pendingLastActiveGraphRestore;
     pendingLastActiveGraphRestore = null;
 
+    if (!restoreTarget || !isCanonicalShareCode(restoreTarget.code)) {
+        clearLastActiveGraphIfMatches(restoreTarget && restoreTarget.code ? restoreTarget.code : '');
+        return false;
+    }
+
     try {
         await loadSavedOrSharedGraphIntoEditor(restoreTarget.code, {
             origin: restoreTarget.origin === 'share' ? 'share' : 'saved',
@@ -4673,7 +4800,7 @@ async function restoreLastActiveGraphForSignedInUser() {
         }
         return true;
     } catch (error) {
-        if (error && error.status === 404) {
+        if (error && (error.status === 404 || error.status === 400)) {
             console.info('Last active nodegraph no longer exists. Clearing stale restore target.', restoreTarget.code);
         } else {
             console.warn('Unable to restore last active nodegraph for the signed-in user.', error);
@@ -4877,6 +5004,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             setDesktopViewerState(payload);
         });
     }
+    if (desktopBridge && typeof desktopBridge.getAppInfo === 'function') {
+        void primeDesktopAppInfo();
+    }
 
     initializePreviewPaneToggle();
     updateBrowserImportUi();
@@ -5001,7 +5131,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const hint = document.createElement('div');
             hint.className = 'saved-link-hint';
-            hint.innerHTML = '<strong>Row click:</strong> load here. <strong>Link click:</strong> open in new tab.';
+            hint.innerHTML = '<strong>Row click:</strong> load here. <strong>Link click:</strong> open your private saved nodegraph in a new tab.';
             wrap.appendChild(hint);
 
             wrap.addEventListener('click', async (e) => {
@@ -5244,80 +5374,88 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderSavedLinks([]);
         }
         updateAccountProfileCard();
+        if (initialWorkspaceLoaded) {
+            await maybeAutoHydrateDesktopSavedGraph();
+        }
     }
     refreshSavedLinksFn = refreshSavedLinks;
 
     // Auth UI (optional)
+    let me = null;
     try {
-        const me = await apiJson('/api/v1/me', { method: 'GET' });
-        const user = me && me.user ? me.user : null;
-        currentUser = user;
-        pendingLastActiveGraphRestore = user
-            ? (readLastActiveGraphForUser(user) || inferLastActiveGraphFromTopicOrigin())
-            : null;
-        const orgs = me && Array.isArray(me.organizations) ? me.organizations : [];
-        if (user) {
-            if (authStatus) authStatus.textContent = me && me.offline ? `Offline mode for ${user.handle}` : `Signed in as ${user.handle}`;
-            if (signOutBtn) signOutBtn.style.display = '';
-            if (signInBtn) signInBtn.style.display = 'none';
-            if (authForm) authForm.style.display = 'none';
-            const manageAccountLink = document.getElementById('manageAccountLink');
-            if (manageAccountLink) manageAccountLink.style.display = '';
-            if (tierOverview) {
-                const lines = [];
-                const up = me && me.userPlan ? me.userPlan : null;
-                const pKey = up && up.planKey ? String(up.planKey) : 'free';
-                const pStatus = up && up.status ? String(up.status) : 'free';
-                lines.push(`Personal tier: ${pKey} (${pStatus})`);
-                for (const o of orgs) {
-                    const planKey = o && o.planKey ? String(o.planKey) : 'free';
-                    const planStatus = o && o.planStatus ? String(o.planStatus) : 'free';
-                    lines.push(`Org ${o.slug}: ${planKey} (${planStatus})`);
-                }
-                tierOverview.textContent = lines.join(' | ');
-            }
-            if (saveAsSelect) {
-                saveAsSelect.innerHTML = '';
-                const optPersonal = document.createElement('option');
-                optPersonal.value = '';
-                optPersonal.textContent = `Personal (${user.handle})`;
-                saveAsSelect.appendChild(optPersonal);
-
-                for (const o of orgs) {
-                    const opt = document.createElement('option');
-                    opt.value = o.id;
-                    opt.textContent = `Org: ${o.slug}`;
-                    saveAsSelect.appendChild(opt);
-                }
-            }
-            await refreshBilling(orgs);
-            await refreshDashboard(user, orgs);
-            await refreshSavedLinks();
-            updateAccountProfileCard();
-            if (!me || !me.offline) {
-                void processPendingCloudSync();
-            }
-        } else {
-            currentUser = null;
-            pendingLastActiveGraphRestore = null;
-            if (authStatus) authStatus.textContent = 'Not signed in';
-            if (signInBtn) signInBtn.style.display = '';
-            if (authForm) authForm.style.display = 'none';
-            if (tierOverview) tierOverview.textContent = '';
-            if (saveAsSelect) saveAsSelect.innerHTML = '';
-            renderSavedLinks([]);
-            if (billingSection) billingSection.style.display = 'none';
-            if (dashboardSection) dashboardSection.style.display = 'none';
-            const manageAccountLink = document.getElementById('manageAccountLink');
-            if (manageAccountLink) manageAccountLink.style.display = 'none';
-            updateAccountProfileCard();
-        }
+        me = await apiJson('/api/v1/me', { method: 'GET' });
     } catch (e) {
+        me = null;
+    }
+
+    const user = me && me.user ? me.user : null;
+    currentUser = user;
+    pendingLastActiveGraphRestore = user
+        ? (readLastActiveGraphForUser(user) || inferLastActiveGraphFromTopicOrigin())
+        : null;
+    const orgs = me && Array.isArray(me.organizations) ? me.organizations : [];
+
+    if (user) {
+        if (authStatus) authStatus.textContent = me && me.offline ? `Offline mode for ${user.handle}` : `Signed in as ${user.handle}`;
+        if (signOutBtn) signOutBtn.style.display = '';
+        if (signInBtn) signInBtn.style.display = 'none';
+        if (authForm) authForm.style.display = 'none';
+        const manageAccountLink = document.getElementById('manageAccountLink');
+        if (manageAccountLink) manageAccountLink.style.display = '';
+        if (tierOverview) {
+            const lines = [];
+            const up = me && me.userPlan ? me.userPlan : null;
+            const pKey = up && up.planKey ? String(up.planKey) : 'free';
+            const pStatus = up && up.status ? String(up.status) : 'free';
+            lines.push(`Personal tier: ${pKey} (${pStatus})`);
+            for (const o of orgs) {
+                const planKey = o && o.planKey ? String(o.planKey) : 'free';
+                const planStatus = o && o.planStatus ? String(o.planStatus) : 'free';
+                lines.push(`Org ${o.slug}: ${planKey} (${planStatus})`);
+            }
+            tierOverview.textContent = lines.join(' | ');
+        }
+        if (saveAsSelect) {
+            saveAsSelect.innerHTML = '';
+            const optPersonal = document.createElement('option');
+            optPersonal.value = '';
+            optPersonal.textContent = `Personal (${user.handle})`;
+            saveAsSelect.appendChild(optPersonal);
+
+            for (const o of orgs) {
+                const opt = document.createElement('option');
+                opt.value = o.id;
+                opt.textContent = `Org: ${o.slug}`;
+                saveAsSelect.appendChild(opt);
+            }
+        }
+        try {
+            await refreshBilling(orgs);
+        } catch (error) {
+            console.warn('Billing bootstrap failed without affecting the signed-in session.', error);
+        }
+        try {
+            await refreshDashboard(user, orgs);
+        } catch (error) {
+            console.warn('Analytics bootstrap failed without affecting the signed-in session.', error);
+        }
+        try {
+            await refreshSavedLinks();
+        } catch (error) {
+            console.warn('Saved-nodegraph bootstrap failed without affecting the signed-in session.', error);
+        }
+        updateAccountProfileCard();
+        if (!me || !me.offline) {
+            void processPendingCloudSync();
+        }
+    } else {
         currentUser = null;
         pendingLastActiveGraphRestore = null;
+        currentSavedLinksCache = [];
         // Backend may not expose auth in some deployments; keep UI quiet.
-        if (authStatus) authStatus.textContent = '';
+        if (authStatus) authStatus.textContent = me ? 'Not signed in' : '';
         if (signInBtn) signInBtn.style.display = '';
+        if (authForm) authForm.style.display = 'none';
         if (tierOverview) tierOverview.textContent = '';
         if (saveAsSelect) saveAsSelect.innerHTML = '';
         renderSavedLinks([]);
@@ -5490,6 +5628,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    initialWorkspaceLoaded = true;
+    if (!loadedShare) {
+        await maybeAutoHydrateDesktopSavedGraph();
+    }
+
 
     // --- Add Event Listeners ---
 
@@ -5654,7 +5797,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             if (res && res.shareUrl) {
                 try { await navigator.clipboard.writeText(res.shareUrl); } catch (_) { }
-                window.prompt('Saved link (copied if supported):', res.shareUrl);
+                window.prompt('Saved private link (copied if supported):', res.shareUrl);
             }
         } catch (e) {
             console.warn('Failed to save node set.', e);
@@ -5679,7 +5822,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             if (res && res.shareUrl) {
                 try { await navigator.clipboard.writeText(res.shareUrl); } catch (_) { }
-                window.prompt('Saved link updated (copied if supported):', res.shareUrl);
+                window.prompt('Saved private link updated (copied if supported):', res.shareUrl);
             }
         } catch (e) {
             console.warn('Failed to update saved node set.', e);

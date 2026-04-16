@@ -9,7 +9,7 @@ Installed builds default to the hosted Cynode app at `https://cynode.vercel.app/
 1. Start the Cynode web app locally.
 2. Run `npm run desktop:dev`.
 
-In development, the desktop app defaults to `http://127.0.0.1:3001/`.
+In development, the desktop app defaults to `http://localhost:3001/`.
 
 To point it at a deployed environment instead, set `CYNODE_DESKTOP_START_URL` before launching Electron.
 

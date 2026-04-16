@@ -17,10 +17,13 @@ function sendJson(res: ServerResponse, statusCode: number, body: unknown) {
 // on every request while still surfacing temporary unavailability as retryable 503s.
 let lastDbHealthTime = 0;
 let lastDbHealthOk = false;
+const DB_HEALTH_SUCCESS_TTL_MS = 30000;
+const DB_HEALTH_FAILURE_TTL_MS = 1000;
 
 async function checkDbHealth(timeoutMs = 500): Promise<boolean> {
   const now = Date.now();
-  if (now - lastDbHealthTime < 30000) {
+  const ttl = lastDbHealthOk ? DB_HEALTH_SUCCESS_TTL_MS : DB_HEALTH_FAILURE_TTL_MS;
+  if (now - lastDbHealthTime < ttl) {
     return lastDbHealthOk;
   }
 

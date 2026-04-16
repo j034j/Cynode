@@ -4,6 +4,7 @@ import type { AuthUser } from "./auth.js";
 declare module "fastify" {
   interface FastifyRequest {
     user: AuthUser | null;
+    authSessionLookupError?: string | null;
     rawBody?: string;
   }
 

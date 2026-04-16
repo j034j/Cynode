@@ -209,6 +209,24 @@ function getBaseUrl(req: Parameters<typeof getPublicOrigin>[0]): string {
   return getPublicOrigin(req);
 }
 
+async function canUserReadSharedSnapshot(
+  user: any,
+  share: { saved: boolean; organizationId: string | null; createdByUserId: string | null },
+): Promise<boolean> {
+  if (share.saved !== true) return true;
+
+  if (share.organizationId) {
+    if (!user) return false;
+    const prisma = await getPrisma();
+    const membership = await prisma.membership.findUnique({
+      where: { userId_organizationId: { userId: user.id, organizationId: share.organizationId } },
+    });
+    return !!membership;
+  }
+
+  return !!user && share.createdByUserId === user.id;
+}
+
 async function assertCanEditSavedShare(prisma: any, user: any, code: string) {
   const share = await prisma.share.findUnique({
     where: { code },
@@ -1554,10 +1572,15 @@ export async function registerRoutes(app: FastifyInstance) {
               }),
             ),
           }),
+          503: z.object({ error: z.literal("session_unavailable") }),
         },
       },
     },
-    async (req) => {
+    async (req, reply) => {
+      if (!req.user && req.authSessionLookupError) {
+        return reply.code(503).send({ error: "session_unavailable" });
+      }
+
       const user = (req as any).user ?? null;
       if (!user) return { user: null, userPlan: null, organizations: [] };
 
@@ -2592,7 +2615,18 @@ export async function registerRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const resolved = await getGraphByShareCode(req.params.code);
       if (!resolved) return reply.code(404).send({ error: "not_found" });
-      const { shareCreatedAt: _shareCreatedAt, ...graph } = resolved;
+
+      const user = (req as any).user ?? null;
+      const canRead = await canUserReadSharedSnapshot(user, resolved);
+      if (!canRead) return reply.code(404).send({ error: "not_found" });
+
+      const {
+        shareCreatedAt: _shareCreatedAt,
+        saved: _saved,
+        createdByUserId: _createdByUserId,
+        organizationId: _organizationId,
+        ...graph
+      } = resolved;
 
       // Attach media descriptors if present.
       try {
