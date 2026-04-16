@@ -225,8 +225,12 @@ export type ShareState = {
   createdAt: string; // ISO
 };
 
+type GraphPersistenceInput =
+  Pick<GraphState, "nodeCount" | "nodeUrls">
+  & Partial<Pick<GraphState, "lastSelectedNode" | "nodeCaptions" | "nodePauseSecByNode">>;
+
 export function compactGraphStateForPersistence(
-  input: Pick<GraphState, "nodeCount" | "lastSelectedNode" | "nodeUrls"> & Partial<Pick<GraphState, "nodeCaptions" | "nodePauseSecByNode">>,
+  input: GraphPersistenceInput,
 ): (Pick<GraphState, "nodeCount" | "lastSelectedNode" | "nodeUrls"> & Partial<Pick<GraphState, "nodeCaptions" | "nodePauseSecByNode">>) | null {
   const requestedNodeCount = clampInt(input.nodeCount, 1, 20);
   const rawUrls = normalizeNodeUrls(input.nodeUrls ?? {}, requestedNodeCount);
@@ -278,7 +282,7 @@ export function compactGraphStateForPersistence(
 }
 
 export async function createShareFromGraphState(
-  input: Pick<GraphState, "nodeCount" | "lastSelectedNode" | "nodeUrls"> & Partial<Pick<GraphState, "nodeCaptions" | "nodePauseSecByNode">>,
+  input: GraphPersistenceInput,
   meta?: { createdByUserId?: string | null; organizationId?: string | null; saved?: boolean; topic?: string | null },
 ): Promise<ShareState> {
   // Snapshot by creating a fresh graph, then binding a short code to it.
