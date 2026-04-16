@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 const desktopApi = {
   isElectron: true,
   getAppInfo: () => ipcRenderer.invoke('cynode-desktop:get-app-info'),
+  setSessionCookie: (token) => ipcRenderer.invoke('cynode-desktop:set-session-cookie', { token }),
   openInAppViewer: (url, options = {}) => ipcRenderer.invoke('cynode-desktop:open-in-app-viewer', { url, ...options }),
   openSecondaryWindow: (url, options = {}) => ipcRenderer.invoke('cynode-desktop:open-secondary-window', { url, ...options }),
   openExternal: (url) => ipcRenderer.invoke('cynode-desktop:open-external', { url }),

@@ -5598,6 +5598,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 body: JSON.stringify({ identifier, password }),
             });
             console.log(`[login:debug:client] Login API returned:`, loginResult);
+            // On desktop, explicitly set the session cookie via Electron IPC.
+            // Electron's custom partition may not reliably persist httpOnly cookies
+            // from Set-Cookie headers, so we set it programmatically as a fallback.
+            const desktopLogin = getDesktopBridge();
+            if (desktopLogin && loginResult.sessionToken && typeof desktopLogin.setSessionCookie === 'function') {
+                try {
+                    await desktopLogin.setSessionCookie(loginResult.sessionToken);
+                    console.log('[login:debug:client] Desktop session cookie set explicitly via IPC');
+                } catch (ipcErr) {
+                    console.warn('[login:debug:client] Failed to set desktop session cookie via IPC:', ipcErr);
+                }
+            }
             console.log(`[login:debug:client] About to reload page to pick up session cookie...`);
             window.location.reload();
         } catch (e) {
@@ -5623,10 +5635,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 showAuthError('Please enter a handle, email, and password.');
                 return;
             }
-            await apiJson('/api/v1/auth/register', {
+            const regResult = await apiJson('/api/v1/auth/register', {
                 method: 'POST',
                 body: JSON.stringify({ handle, email, password }),
             });
+            const desktopReg = getDesktopBridge();
+            if (desktopReg && regResult.sessionToken && typeof desktopReg.setSessionCookie === 'function') {
+                try {
+                    await desktopReg.setSessionCookie(regResult.sessionToken);
+                    console.log('[register:debug:client] Desktop session cookie set explicitly via IPC');
+                } catch (ipcErr) {
+                    console.warn('[register:debug:client] Failed to set desktop session cookie via IPC:', ipcErr);
+                }
+            }
             window.location.reload();
         } catch (e) {
             const status = e && e.status ? Number(e.status) : 0;

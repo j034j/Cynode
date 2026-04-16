@@ -153,7 +153,7 @@ export async function createSessionAndSetCookie(
   reply: FastifyReply,
   req: FastifyRequest,
   userId: string,
-): Promise<void> {
+): Promise<string> {
   // Validate host header to prevent setting cookies for disallowed hosts
   if (!isHostAllowed(req)) {
     console.warn("[auth] Attempted to set session cookie from disallowed host:", req.headers.host);
@@ -184,6 +184,7 @@ export async function createSessionAndSetCookie(
     expires: expiresAt,
   });
   console.log(`[auth:debug] Cookie set successfully via reply.setCookie`);
+  return sid;
 }
 
 export async function clearSessionCookieAndDb(req: FastifyRequest, reply: FastifyReply): Promise<void> {

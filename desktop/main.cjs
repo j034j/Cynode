@@ -742,6 +742,32 @@ ipcMain.handle('cynode-desktop:get-app-info', () => {
   };
 });
 
+ipcMain.handle('cynode-desktop:set-session-cookie', async (_event, payload) => {
+  const token = payload && payload.token;
+  if (!token || typeof token !== 'string' || token.length < 16) return false;
+  try {
+    const sess = session.fromPartition(WINDOW_PARTITION);
+    const startUrl = resolveStartUrl();
+    const domain = new URL(startUrl).hostname;
+    await sess.cookies.set({
+      url: startUrl,
+      name: 'sid',
+      value: token,
+      domain,
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: startUrl.startsWith('https:'),
+      expirationDate: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+    });
+    console.log(`[CynodeDesktop] Session cookie set explicitly via IPC | domain=${domain} | secure=${startUrl.startsWith('https:')}`);
+    return true;
+  } catch (err) {
+    console.error('[CynodeDesktop] Failed to set session cookie via IPC:', err);
+    return false;
+  }
+});
+
 ipcMain.handle('cynode-desktop:open-in-app-viewer', async (_event, payload) => {
   const targetUrl = payload && payload.url ? String(payload.url) : '';
   if (!isSafeAppUrl(targetUrl)) {

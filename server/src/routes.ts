@@ -1421,6 +1421,7 @@ export async function registerRoutes(app: FastifyInstance) {
               avatarUrl: z.string().nullable(),
               email: z.string().nullable(),
             }),
+            sessionToken: z.string().optional(),
           }),
           409: z.object({ error: z.literal("already_exists") }),
         },
@@ -1440,7 +1441,7 @@ export async function registerRoutes(app: FastifyInstance) {
           },
         });
 
-        await createSessionAndSetCookie(reply, req as any, created.id);
+        const sessionToken = await createSessionAndSetCookie(reply, req as any, created.id);
         
         // Attempt a short pull then push to synchronize accounts across devices.
         try {
@@ -1463,6 +1464,7 @@ export async function registerRoutes(app: FastifyInstance) {
             avatarUrl: created.avatarUrl ?? null,
             email: created.email ?? null,
           },
+          sessionToken,
         };
       } catch (err: any) {
         if (typeof err?.code === "string" && err.code === "P2002") {
@@ -1487,6 +1489,7 @@ export async function registerRoutes(app: FastifyInstance) {
               avatarUrl: z.string().nullable(),
               email: z.string().nullable(),
             }),
+            sessionToken: z.string().optional(),
           }),
           401: z.object({ error: z.literal("invalid_credentials") }),
         },
@@ -1518,7 +1521,7 @@ export async function registerRoutes(app: FastifyInstance) {
       }
 
       console.log(`[login:debug] Login SUCCESS for ${user.handle} (${user.id}). Setting session cookie...`);
-      await createSessionAndSetCookie(reply, req as any, user.id);
+      const sessionToken = await createSessionAndSetCookie(reply, req as any, user.id);
       console.log(`[login:debug] Session cookie set. Checking reply headers:`, reply.getHeaders());
       
       // Attempt a short pull then push to synchronize accounts across devices.
@@ -1540,6 +1543,7 @@ export async function registerRoutes(app: FastifyInstance) {
           avatarUrl: user.avatarUrl ?? null,
           email: user.email ?? null,
         },
+        sessionToken,
       };
     },
   );
