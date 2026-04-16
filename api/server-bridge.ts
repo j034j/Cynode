@@ -2,24 +2,23 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { app } from '../server/src/index.js';
 import { getPrisma } from '../server/src/db.js';
 
-// Cache successful DB health check for 30s to avoid hammering DB on every request
+// Cache successful DB health checks briefly to avoid hammering a cold database
+// on every request while still surfacing temporary unavailability as retryable 503s.
 let lastDbHealthTime = 0;
 let lastDbHealthOk = false;
 
 async function checkDbHealth(timeoutMs = 500): Promise<boolean> {
   const now = Date.now();
-  // Use cached result if within 30 seconds
   if (now - lastDbHealthTime < 30000) {
     return lastDbHealthOk;
   }
 
   try {
     const prisma = await getPrisma();
-    // Use Promise.race with timeout to avoid hanging requests
     await Promise.race([
       prisma.$queryRaw`SELECT 1`,
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('DB health check timeout')), timeoutMs)
+        setTimeout(() => reject(new Error('DB health check timeout')), timeoutMs),
       ),
     ]);
     lastDbHealthOk = true;
@@ -37,8 +36,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     await app.ready();
 
-    // Explicitly handle root/health check for the bridge
-    if (req.url === '/api/server-bridge') {
+    // Check if it's a direct health ping to the bridge
+    if (req.url === '/api/server-bridge' && req.headers['x-now-route-matches'] === undefined) {
       const dbOk = await checkDbHealth();
       if (!dbOk) {
         return res.status(503).json({ ok: false, error: 'Service Unavailable', message: 'Database unavailable' });
@@ -46,16 +45,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true, message: 'Server Bridge Active' });
     }
 
-    // For GET requests, allow request to proceed even if DB health check fails
-    // (they'll get 500 errors from individual API calls, but at least they can try)
-    if (req.method === 'GET') {
-      // Check health but don't block GET requests
+    if (req.method === 'GET' || req.method === 'HEAD') {
       const dbOk = await checkDbHealth(300);
       if (!dbOk) {
-        console.warn(`[ServerBridge] Proceeding with degraded DB health for GET ${req.url}`);
+        console.warn(`[ServerBridge] Proceeding with degraded DB health for ${req.method} ${req.url}`);
       }
     } else {
-      // For mutations (POST, PATCH, DELETE, PUT), enforce DB availability
       const dbOk = await checkDbHealth(300);
       if (!dbOk) {
         return res.status(503).json({

@@ -24,6 +24,22 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Verify Turso migration secrets
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          if [ -z "$TURSO_DATABASE_URL" ] || [ -z "$TURSO_AUTH_TOKEN" ]; then
+            echo "Missing TURSO_DATABASE_URL or TURSO_AUTH_TOKEN GitHub Actions secrets."
+            exit 1
+          fi
+
+      - name: Apply Turso migrations
+        run: npm run db:migrate:turso
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+
       - name: Deploy to Vercel (Preview on branches, Production on main)
         uses: vercel/action@v2
         with:

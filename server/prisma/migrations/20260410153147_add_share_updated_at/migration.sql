@@ -20,7 +20,9 @@ CREATE TABLE "new_Share" (
     CONSTRAINT "Share_createdByUserId_fkey" FOREIGN KEY ("createdByUserId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "Share_graphId_fkey" FOREIGN KEY ("graphId") REFERENCES "Graph" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
-INSERT INTO "new_Share" ("code", "createdAt", "createdByUserId", "graphId", "organizationId", "saved", "topic") SELECT "code", "createdAt", "createdByUserId", "graphId", "organizationId", "saved", "topic" FROM "Share";
+INSERT INTO "new_Share" ("code", "createdAt", "updatedAt", "createdByUserId", "graphId", "organizationId", "saved", "topic")
+SELECT "code", "createdAt", COALESCE("createdAt", CURRENT_TIMESTAMP), "createdByUserId", "graphId", "organizationId", "saved", "topic"
+FROM "Share";
 DROP TABLE "Share";
 ALTER TABLE "new_Share" RENAME TO "Share";
 CREATE INDEX "Share_graphId_idx" ON "Share"("graphId");

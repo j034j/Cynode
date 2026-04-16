@@ -467,6 +467,14 @@ function isOfflineCapableResponse(status, text = '') {
     return status === 0 || status === 502 || status === 504;
 }
 
+function createApiError(status, statusText, text = '') {
+    const error = new Error(`API ${status} ${statusText}${text ? `: ${text}` : ''}`);
+    error.status = Number(status) || 0;
+    error.statusText = String(statusText || '');
+    error.responseText = String(text || '');
+    return error;
+}
+
 function queueGraphSnapshotForSync(snapshot, { graphIdOverride = graphId, user = currentUser } = {}) {
     if (!snapshot || typeof snapshot !== 'object') return;
     writePendingGraphSync({
@@ -1494,7 +1502,7 @@ async function apiJson(path, options) {
         const text = await res.text().catch(() => '');
         const fallback = await maybeHandleOfflineApiFallback(path, init, { status: res.status, text });
         if (fallback !== null) return fallback;
-        throw new Error(`API ${res.status} ${res.statusText}${text ? `: ${text}` : ''}`);
+        throw createApiError(res.status, res.statusText, text);
     }
     const json = await res.json();
 
@@ -1536,7 +1544,7 @@ async function apiUpload(path, formData) {
 
         if (!res.ok) {
             const text = await res.text().catch(() => '');
-            throw new Error(`API ${res.status} ${res.statusText}${text ? `: ${text}` : ''}`);
+            throw createApiError(res.status, res.statusText, text);
         }
         return res.json();
       } catch (e) {
@@ -4665,7 +4673,11 @@ async function restoreLastActiveGraphForSignedInUser() {
         }
         return true;
     } catch (error) {
-        console.warn('Unable to restore last active nodegraph for the signed-in user.', error);
+        if (error && error.status === 404) {
+            console.info('Last active nodegraph no longer exists. Clearing stale restore target.', restoreTarget.code);
+        } else {
+            console.warn('Unable to restore last active nodegraph for the signed-in user.', error);
+        }
         clearLastActiveGraphIfMatches(restoreTarget.code);
         return false;
     }

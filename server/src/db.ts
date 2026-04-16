@@ -11,6 +11,10 @@ const __dirname = path.dirname(__filename);
 let prisma: PrismaClient | null = null;
 let initPromise: Promise<PrismaClient> | null = null;
 
+type SqliteColumnInfoRow = {
+  name?: string | null;
+};
+
 function defaultLocalDatabaseUrl(): string {
   const defaultLocalPath = path.resolve(__dirname, "..", "prisma", "dev.db");
   return `file:${defaultLocalPath}`;
@@ -21,9 +25,14 @@ function normalizeDatabaseUrl(rawUrl?: string | null): string {
   const input = typeof rawUrl === "string" && rawUrl.trim() ? rawUrl.trim() : fallback;
   if (!input.startsWith("file:")) return input;
 
-  const filePath = input.slice(5);
+  let filePath = input.slice(5);
   if (!filePath) return fallback;
   if (path.isAbsolute(filePath) || /^[A-Za-z]:[\\/]/.test(filePath)) return input;
+
+  // Align runtime resolution with Prisma schema location
+  if (filePath === "./dev.db" || filePath === "dev.db") {
+      filePath = "prisma/dev.db";
+  }
 
   const resolved = path.resolve(__dirname, "..", filePath);
   return `file:${resolved}`;
@@ -63,6 +72,42 @@ export function resolveDatabaseConfig() {
   };
 }
 
+async function sqliteTableExists(client: PrismaClient, tableName: string): Promise<boolean> {
+  const rows = await client.$queryRawUnsafe<Array<{ name?: string | null }>>(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1`,
+    tableName,
+  );
+  return rows.length > 0;
+}
+
+async function sqliteTableHasColumn(
+  client: PrismaClient,
+  tableName: string,
+  columnName: string,
+): Promise<boolean> {
+  const safeTableName = String(tableName).replace(/"/g, "\"\"");
+  const rows = await client.$queryRawUnsafe<SqliteColumnInfoRow[]>(
+    `PRAGMA table_info("${safeTableName}")`,
+  );
+  return rows.some((row) => row && row.name === columnName);
+}
+
+async function repairLegacyShareSchema(client: PrismaClient): Promise<void> {
+  if (!(await sqliteTableExists(client, "Share"))) return;
+
+  const hasUpdatedAt = await sqliteTableHasColumn(client, "Share", "updatedAt");
+  if (!hasUpdatedAt) {
+    info("[db] Repairing legacy Share schema: adding missing updatedAt column");
+    await client.$executeRawUnsafe(`ALTER TABLE "Share" ADD COLUMN "updatedAt" DATETIME`);
+  }
+
+  await client.$executeRawUnsafe(
+    `UPDATE "Share"
+     SET "updatedAt" = COALESCE("updatedAt", "createdAt", CURRENT_TIMESTAMP)
+     WHERE "updatedAt" IS NULL`,
+  );
+}
+
 export async function getPrisma(): Promise<PrismaClient> {
   if (prisma) return prisma;
   if (initPromise) return initPromise;
@@ -95,6 +140,8 @@ export async function getPrisma(): Promise<PrismaClient> {
         }
         prisma = new PrismaClient();
       }
+      await repairLegacyShareSchema(prisma);
+      debug("[db] Schema compatibility checks complete");
       return prisma;
     } catch (err: any) {
       error("[db] CRITICAL INITIALIZATION ERROR:", err.message);

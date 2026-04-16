@@ -143,18 +143,42 @@ async function apiJson(url, options = {}) {
     if (!init.cache) init.cache = 'no-store';
 
     let res;
-    try {
-        res = await fetch(url, init);
-    } catch (error) {
-        if (url.includes('/api/v1/me')) {
-            const cached = readCachedMe();
-            if (cached) return { ...cached, offline: true };
+    let lastError = null;
+    const maxRetries = 2;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            res = await fetch(url, init);
+            if (res.status === 503 && attempt < maxRetries - 1) {
+                const delay = Math.pow(2, attempt) * 500;
+                console.warn(`[account] Got 503 for ${url}, retrying in ${delay}ms...`);
+                await new Promise((resolve) => setTimeout(resolve, delay));
+                continue;
+            }
+            break;
+        } catch (error) {
+            lastError = error;
+            if (attempt < maxRetries - 1) {
+                const delay = Math.pow(2, attempt) * 500;
+                console.warn(`[account] Fetch error for ${url}, retrying in ${delay}ms...`);
+                await new Promise((resolve) => setTimeout(resolve, delay));
+                continue;
+            }
+            if (url.includes('/api/v1/me')) {
+                const cached = readCachedMe();
+                if (cached) return { ...cached, offline: true };
+            }
+            throw error;
         }
-        throw error;
+    }
+
+    if (!res) {
+        if (lastError) throw lastError;
+        throw new Error(`No response received for ${url}`);
     }
 
     if (!res.ok) {
-        if ((res.status === 502 || res.status === 503 || res.status === 504) && url.includes('/api/v1/me')) {
+        if ((res.status === 502 || res.status === 504) && url.includes('/api/v1/me')) {
             const cached = readCachedMe();
             if (cached) return { ...cached, offline: true };
         }

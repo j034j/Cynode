@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { createClient } from '@libsql/client';
-import { PrismaLibSQL } from '@prisma/adapter-libsql';
+import * as AdapterLibSql from '@prisma/adapter-libsql';
+const PrismaLibSQL = AdapterLibSql.PrismaLibSQL || AdapterLibSql.PrismaLibSql;
 import { PrismaClient } from '@prisma/client';
 import { fileURLToPath } from 'url';
 import { info, error } from './logger.mjs';
