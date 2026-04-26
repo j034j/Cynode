@@ -179,14 +179,6 @@ function analysisRootDir(): string {
   return path.resolve(process.env.ANALYSIS_ROOT ?? path.resolve("server", "data", "analysis"));
 }
 
-async function ensureAnalysisBucketRoot(): Promise<string> {
-  const root = analysisRootDir();
-  await fs.mkdir(path.join(root, "shares"), { recursive: true });
-  await fs.mkdir(path.join(root, "graphs"), { recursive: true });
-  await fs.mkdir(path.join(root, "clients"), { recursive: true });
-  return root;
-}
-
 function scopeTarget(scope: AnalysisScope): { kind: "shares" | "graphs" | "clients"; key: string } | null {
   if (scope.shareCode) return { kind: "shares", key: scope.shareCode };
   if (scope.graphId) return { kind: "graphs", key: scope.graphId };
@@ -201,7 +193,7 @@ function safeBucketKey(value: string): string {
 async function bucketPathFor(scope: AnalysisScope): Promise<string | null> {
   const target = scopeTarget(scope);
   if (!target) return null;
-  const root = await ensureAnalysisBucketRoot();
+  const root = analysisRootDir();
   return path.join(root, target.kind, `${safeBucketKey(target.key)}.json`);
 }
 
