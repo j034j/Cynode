@@ -301,6 +301,7 @@
 
     <main class="app-main">
       <div class="container">
+        <div class="player-brand">Cynode</div>
         <div id="graphTopicDisplay" class="graph-topic-display"></div>
         <div class="address-bar" id="addressBar">
           <div class="address-bar-icons">
@@ -331,7 +332,9 @@
           </div>
           <button id="addManualBtn">Add URL</button>
           <button id="addFileBtn" title="Attach a local file (this device only)">Add File</button>
+          <button id="analyzeFileBtn" title="Analyze the selected file or media">Analyze File</button>
           <input id="filePicker" type="file" style="display:none" multiple>
+          <button id="analyzePageBtn" title="Analyze the selected web page">Analyze Page</button>
           <button id="importBrowserBtn">Import Browser</button>
         </div>
 
@@ -351,16 +354,43 @@
           <button id="previewPaneToggle" class="pane-toggle-btn" type="button" aria-pressed="false" aria-controls="nodeAssociationsPane previewContainer">
             Expand Preview
           </button>
+          <button id="analysisPaneToggle" class="pane-toggle-btn" type="button" aria-pressed="false" aria-controls="nodeAssociationsPane previewContainer">
+            Expand Analysis
+          </button>
         </div>
         <div class="split-content" id="splitContent">
           <div class="url-display" id="nodeAssociationsPane">
+            <div class="pane-mode-switch" role="tablist" aria-label="Left pane content selector">
+              <button id="showAssociationsPaneBtn" class="pane-mode-btn is-active" type="button" aria-pressed="true">Node Associations</button>
+              <button id="showAnalysisPaneBtn" class="pane-mode-btn" type="button" aria-pressed="false">Preview Intelligence</button>
+            </div>
             <div class="pane-header">
-              <h3>Node Associations</h3>
+              <h3 id="sidePaneTitle">Node Associations</h3>
               <button id="nodeAssociationsToggle" class="pane-inline-toggle" type="button" aria-pressed="false" aria-controls="nodeAssociationsPane previewContainer">
                 Hide Pane
               </button>
             </div>
-            <div id="nodeAssociations"></div>
+            <div id="nodeAssociations" class="side-pane-section"></div>
+            <section id="analysisPane" class="analysis-pane side-pane-section" aria-live="polite" hidden>
+              <div class="analysis-pane__header">
+                <div>
+                  <div class="analysis-pane__eyebrow">Preview Intelligence</div>
+                  <h4>Analyze the selected source</h4>
+                </div>
+                <div class="analysis-pane__controls">
+                  <label class="analysis-provider-label" for="analysisProviderSelect">Model</label>
+                  <select id="analysisProviderSelect" class="analysis-provider-select"></select>
+                  <button id="analysisPlayModeBtn" type="button" class="analysis-rerun-btn">Play Sync Off</button>
+                  <button id="analysisRerunBtn" type="button" class="analysis-rerun-btn">Run Again</button>
+                </div>
+              </div>
+              <div id="analysisActions" class="analysis-actions">
+                <button id="analysisPaneFileBtn" type="button" class="analysis-action-btn">Analyze File</button>
+                <button id="analysisPanePageBtn" type="button" class="analysis-action-btn analysis-action-btn--secondary">Analyze Page</button>
+              </div>
+              <div id="analysisStatus" class="analysis-status"></div>
+              <div id="analysisBody" class="analysis-body"></div>
+            </section>
           </div>
           <div class="preview-container" id="previewContainer">
             <div class="pane-header">
@@ -480,10 +510,12 @@
   <!-- Scripts -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script src="/qrcode-node.js?v=0326_localqr3"></script>
   <script src="/sync-queue.js?v=0414_signin_retry"></script>
+  <script src="/analysis.js?v=0426_analysis"></script>
   <script src="/script.js?v=0414_signin_retry"></script>
   <script src="/play.js?v=0414_signin_retry"></script>
   <script src="/play-desktop.js?v=0414_signin_retry"></script>

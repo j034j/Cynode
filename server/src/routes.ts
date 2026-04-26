@@ -12,6 +12,7 @@ import { getPlans, isUnlimitedUser, planByKey, addUsage, creditsForMediaBytes, c
 import { UAParser } from "ua-parser-js";
 import { buildAppUrl, getPublicOrigin, getRequestProtocol } from "./origin.js";
 import { pushUserWorkToCloud, pullUserWorkFromCloud, findAndPullRemoteUser } from "./sync.js";
+import { AnalysisRecordSchema, getPersistedShareAnalyses, registerAnalysisRoutes } from "./analysis.js";
 
 // Helper: await a promise but don't block forever — useful for sync ops.
 async function awaitWithTimeout<T>(p: Promise<T>, ms = 2500): Promise<T | null> {
@@ -47,6 +48,7 @@ const GraphSchema = z.object({
 
 const GraphWithTopicSchema = GraphSchema.extend({
   topic: z.string().nullable().optional(),
+  analysesByNode: z.record(z.string().regex(/^\d+$/), AnalysisRecordSchema).optional(),
   media: z
     .object({
       background: z
@@ -385,6 +387,8 @@ function readGeoHeaders(req: { headers: Record<string, unknown> }) {
 }
 
 export async function registerRoutes(app: FastifyInstance) {
+  await registerAnalysisRoutes(app);
+
   // Public media serving (no auth): anyone with the share link can fetch these assets.
   app.get<{ Params: { id: string } }>(
     "/m/:id",
@@ -2647,6 +2651,7 @@ export async function registerRoutes(app: FastifyInstance) {
       try {
         const prisma = await getPrisma();
         const media = await prisma.mediaAsset.findMany({ where: { shareCode: req.params.code } });
+        const analysesByNode = await getPersistedShareAnalyses(req.params.code);
         const background = media.find((m: any) => m.kind === "bg" && m.nodeIndex === 0) ?? null;
         const voiceByNode: Record<string, any> = {};
         const filesByNode: Record<string, any> = {};
@@ -2669,6 +2674,7 @@ export async function registerRoutes(app: FastifyInstance) {
         }
         return {
           ...graph,
+          analysesByNode,
           media: {
             background: background
               ? { id: background.id, url: buildAppUrl(req, `/m/${background.id}`), mimeType: background.mimeType, sizeBytes: background.sizeBytes }

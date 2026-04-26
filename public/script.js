@@ -46,7 +46,8 @@ let nodeGraph, nodeSelector, urlInput, nodeCountInput, recentUrlDiv,
     addressBar, itemLimitInput, nodeTitleInput, nodeCaptionInput,
     browserBridgeStatusEl, browserBridgeRefreshBtn, importTabsBtn, importBookmarksBtn, importHistoryBtn,
     browserBridgeSummaryEl, browserBridgeBadgeEl, browserBridgeMetaEl, browserImportHintEl, browserImportFeedbackEl,
-    splitContentEl, previewPaneToggleBtn, nodeAssociationsToggleBtn,
+    splitContentEl, previewPaneToggleBtn, analysisPaneToggleBtn, nodeAssociationsToggleBtn,
+    sidePaneTitleEl, showAssociationsPaneBtn, showAnalysisPaneBtn, analysisPaneEl,
     qrSavedGraphSelect, generateQrBtn, qrDisplayArea;
 let authFormEl, signInBtnEl;
 
@@ -54,6 +55,8 @@ let authFormEl, signInBtnEl;
 const MAX_NODES = 20;
 const MIN_NODES = 1;
 const PREVIEW_EXPANDED_KEY = 'previewPaneExpanded';
+const EXPANDED_PANE_KEY = 'expandedPane';
+const SIDE_PANE_MODE_KEY = 'sidePaneMode';
 const EXTENSION_BRIDGE_MESSAGE_TYPE = 'CYNODE_EXTENSION_REQUEST';
 const EXTENSION_BRIDGE_RESPONSE_TYPE = 'CYNODE_EXTENSION_RESPONSE';
 const EXTENSION_BRIDGE_AVAILABLE_TYPE = 'CYNODE_EXTENSION_AVAILABLE';
@@ -85,6 +88,20 @@ let browserBridgeState = {
     importInFlight: null,
 };
 let previewPaneExpanded = false;
+let expandedPane = null; // null | 'preview' | 'analysis'
+let sidePaneMode = 'associations'; // 'associations' | 'analysis'
+
+function getAnalysisClientGraphKey() {
+    try {
+        const existing = localStorage.getItem('cynode.analysis.clientGraphKey');
+        if (existing) return existing;
+        const generated = `cg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+        localStorage.setItem('cynode.analysis.clientGraphKey', generated);
+        return generated;
+    } catch (_) {
+        return 'cynode-default-graph';
+    }
+}
 
 function getDesktopBridge() {
     return (typeof window !== 'undefined' && window.cynodeDesktop && window.cynodeDesktop.isElectron)
@@ -228,59 +245,134 @@ function registerServiceWorker() {
     navigator.serviceWorker.register('/sw.js?v=0402_syncfix').catch(() => { });
 }
 
-function setPreviewPaneExpanded(expanded, options = {}) {
-    previewPaneExpanded = !!expanded;
-    const split = splitContentEl || document.getElementById('splitContent');
-    if (split) split.classList.toggle('preview-expanded', previewPaneExpanded);
+function applySidePaneMode(mode) {
+    sidePaneMode = mode === 'analysis' ? 'analysis' : 'associations';
+    if (nodeAssociationsDiv) nodeAssociationsDiv.hidden = sidePaneMode !== 'associations';
+    if (analysisPaneEl) analysisPaneEl.hidden = sidePaneMode !== 'analysis';
+    if (showAssociationsPaneBtn) {
+        showAssociationsPaneBtn.classList.toggle('is-active', sidePaneMode === 'associations');
+        showAssociationsPaneBtn.setAttribute('aria-pressed', sidePaneMode === 'associations' ? 'true' : 'false');
+    }
+    if (showAnalysisPaneBtn) {
+        showAnalysisPaneBtn.classList.toggle('is-active', sidePaneMode === 'analysis');
+        showAnalysisPaneBtn.setAttribute('aria-pressed', sidePaneMode === 'analysis' ? 'true' : 'false');
+    }
+    if (sidePaneTitleEl) {
+        sidePaneTitleEl.textContent = sidePaneMode === 'analysis' ? 'Preview Intelligence' : 'Node Associations';
+    }
+}
 
-    const expandLabel = previewPaneExpanded ? 'Show Associations' : 'Expand Preview';
-    const inlineLabel = previewPaneExpanded ? 'Show Pane' : 'Hide Pane';
+function setExpandedPane(mode, options = {}) {
+    expandedPane = mode === 'preview' || mode === 'analysis' ? mode : null;
+    previewPaneExpanded = expandedPane === 'preview';
+    if (expandedPane === 'analysis') {
+        applySidePaneMode('analysis');
+    }
+
+    const split = splitContentEl || document.getElementById('splitContent');
+    if (split) {
+        split.classList.toggle('preview-expanded', expandedPane === 'preview');
+        split.classList.toggle('analysis-expanded', expandedPane === 'analysis');
+    }
 
     if (previewPaneToggleBtn) {
-        previewPaneToggleBtn.textContent = expandLabel;
-        previewPaneToggleBtn.setAttribute('aria-pressed', previewPaneExpanded ? 'true' : 'false');
-        previewPaneToggleBtn.title = previewPaneExpanded ? 'Restore the Node Associations pane' : 'Hide the Node Associations pane and expand Preview';
+        const isPreviewExpanded = expandedPane === 'preview';
+        previewPaneToggleBtn.textContent = isPreviewExpanded ? 'Show Both Panes' : 'Expand Preview';
+        previewPaneToggleBtn.setAttribute('aria-pressed', isPreviewExpanded ? 'true' : 'false');
+        previewPaneToggleBtn.title = isPreviewExpanded ? 'Restore the left-side pane and show both panes' : 'Hide the left-side pane and expand Preview';
+    }
+
+    if (analysisPaneToggleBtn) {
+        const isAnalysisExpanded = expandedPane === 'analysis';
+        analysisPaneToggleBtn.textContent = isAnalysisExpanded ? 'Show Both Panes' : 'Expand Analysis';
+        analysisPaneToggleBtn.setAttribute('aria-pressed', isAnalysisExpanded ? 'true' : 'false');
+        analysisPaneToggleBtn.title = isAnalysisExpanded ? 'Restore the Preview pane and show both panes' : 'Hide the Preview pane and expand Preview Intelligence';
     }
 
     if (nodeAssociationsToggleBtn) {
-        nodeAssociationsToggleBtn.textContent = inlineLabel;
-        nodeAssociationsToggleBtn.setAttribute('aria-pressed', previewPaneExpanded ? 'true' : 'false');
-        nodeAssociationsToggleBtn.title = previewPaneExpanded ? 'Show the Node Associations pane again' : 'Hide the Node Associations pane';
+        const leftPaneHidden = expandedPane === 'preview';
+        nodeAssociationsToggleBtn.textContent = leftPaneHidden ? 'Show Pane' : 'Hide Pane';
+        nodeAssociationsToggleBtn.setAttribute('aria-pressed', leftPaneHidden ? 'true' : 'false');
+        nodeAssociationsToggleBtn.title = leftPaneHidden ? 'Show the left-side pane again' : 'Hide the left-side pane';
     }
 
     if (options.persist === false) return;
     try {
         localStorage.setItem(PREVIEW_EXPANDED_KEY, previewPaneExpanded ? '1' : '0');
+        localStorage.setItem(EXPANDED_PANE_KEY, expandedPane || '');
+        localStorage.setItem(SIDE_PANE_MODE_KEY, sidePaneMode);
     } catch (_) { }
 }
 
 function togglePreviewPane() {
-    setPreviewPaneExpanded(!previewPaneExpanded);
+    setExpandedPane(expandedPane === 'preview' ? null : 'preview');
+}
+
+function toggleAnalysisPaneExpansion() {
+    setExpandedPane(expandedPane === 'analysis' ? null : 'analysis');
+}
+
+function toggleSidePaneVisibility() {
+    setExpandedPane(expandedPane === 'preview' ? null : 'preview');
+}
+
+function showSidePaneMode(mode) {
+    applySidePaneMode(mode);
+    if (expandedPane === 'preview') {
+        setExpandedPane(null);
+        return;
+    }
+    try {
+        localStorage.setItem(SIDE_PANE_MODE_KEY, sidePaneMode);
+    } catch (_) { }
 }
 
 function initializePreviewPaneToggle() {
     splitContentEl = document.getElementById('splitContent');
     previewPaneToggleBtn = document.getElementById('previewPaneToggle');
+    analysisPaneToggleBtn = document.getElementById('analysisPaneToggle');
     nodeAssociationsToggleBtn = document.getElementById('nodeAssociationsToggle');
+    sidePaneTitleEl = document.getElementById('sidePaneTitle');
+    showAssociationsPaneBtn = document.getElementById('showAssociationsPaneBtn');
+    showAnalysisPaneBtn = document.getElementById('showAnalysisPaneBtn');
+    analysisPaneEl = document.getElementById('analysisPane');
 
     if (previewPaneToggleBtn) {
         previewPaneToggleBtn.addEventListener('click', togglePreviewPane);
     }
+    if (analysisPaneToggleBtn) {
+        analysisPaneToggleBtn.addEventListener('click', toggleAnalysisPaneExpansion);
+    }
     if (nodeAssociationsToggleBtn) {
-        nodeAssociationsToggleBtn.addEventListener('click', togglePreviewPane);
+        nodeAssociationsToggleBtn.addEventListener('click', toggleSidePaneVisibility);
+    }
+    if (showAssociationsPaneBtn) {
+        showAssociationsPaneBtn.addEventListener('click', () => showSidePaneMode('associations'));
+    }
+    if (showAnalysisPaneBtn) {
+        showAnalysisPaneBtn.addEventListener('click', () => showSidePaneMode('analysis'));
     }
 
     try {
-        const savedPreviewState = localStorage.getItem(PREVIEW_EXPANDED_KEY);
-        if (savedPreviewState === null) {
-            previewPaneExpanded = document.documentElement.dataset.device === 'mobile';
+        const savedMode = localStorage.getItem(SIDE_PANE_MODE_KEY);
+        sidePaneMode = savedMode === 'analysis' ? 'analysis' : 'associations';
+        const savedExpandedPane = localStorage.getItem(EXPANDED_PANE_KEY);
+        if (savedExpandedPane === 'preview' || savedExpandedPane === 'analysis') {
+            expandedPane = savedExpandedPane;
         } else {
-            previewPaneExpanded = savedPreviewState === '1';
+            const savedPreviewState = localStorage.getItem(PREVIEW_EXPANDED_KEY);
+            if (savedPreviewState === null) {
+                expandedPane = document.documentElement.dataset.device === 'mobile' ? 'preview' : null;
+            } else {
+                expandedPane = savedPreviewState === '1' ? 'preview' : null;
+            }
         }
     } catch (_) {
-        previewPaneExpanded = document.documentElement.dataset.device === 'mobile';
+        sidePaneMode = 'associations';
+        expandedPane = document.documentElement.dataset.device === 'mobile' ? 'preview' : null;
     }
-    setPreviewPaneExpanded(previewPaneExpanded, { persist: false });
+    applySidePaneMode(sidePaneMode);
+    setExpandedPane(expandedPane, { persist: false });
 }
 
 /**
@@ -570,13 +662,26 @@ function queueGraphSnapshotForSync(snapshot, { graphIdOverride = graphId, user =
     }, user);
 }
 
-function queuePendingSavedCreate({ snapshot, organizationId, topic, user = currentUser } = {}) {
+function getCurrentAnalysisSnapshot() {
+    try {
+        if (window.CynodeAnalysis && typeof window.CynodeAnalysis.getPersistedAnalysesSnapshot === 'function') {
+            const snapshot = window.CynodeAnalysis.getPersistedAnalysesSnapshot();
+            return snapshot && typeof snapshot === 'object'
+                ? cloneSerializable(snapshot)
+                : {};
+        }
+    } catch (_) { }
+    return {};
+}
+
+function queuePendingSavedCreate({ snapshot, organizationId, topic, analysesByNode, user = currentUser } = {}) {
     const actions = readPendingSavedActions(user);
     const queued = {
         id: buildPendingId('saved'),
         type: 'create',
         placeholderCode: buildPendingId('offline'),
         snapshot: cloneSerializable(snapshot),
+        analysesByNode: cloneSerializable(analysesByNode || getCurrentAnalysisSnapshot()),
         mediaScopeKey: voiceScopeKey(),
         organizationId: organizationId || null,
         topic: topic || null,
@@ -587,26 +692,29 @@ function queuePendingSavedCreate({ snapshot, organizationId, topic, user = curre
     return queued;
 }
 
-function queuePendingSavedUpdate({ code, snapshot, topic, user = currentUser } = {}) {
+function queuePendingSavedUpdate({ code, snapshot, topic, analysesByNode, user = currentUser } = {}) {
     const normalizedCode = String(code || '').trim();
     const actions = readPendingSavedActions(user);
+    const nextAnalysesByNode = cloneSerializable(analysesByNode || getCurrentAnalysisSnapshot());
 
     if (normalizedCode.startsWith('offline_')) {
         const existingCreate = actions.find((item) => item && item.type === 'create' && item.placeholderCode === normalizedCode);
         if (existingCreate) {
             existingCreate.snapshot = cloneSerializable(snapshot);
+            existingCreate.analysesByNode = nextAnalysesByNode;
             existingCreate.topic = topic || null;
             existingCreate.mediaScopeKey = existingCreate.mediaScopeKey || voiceScopeKey();
             existingCreate.updatedAt = new Date().toISOString();
             writePendingSavedActions(actions, user);
             return existingCreate;
         }
-        return queuePendingSavedCreate({ snapshot, topic, user });
+        return queuePendingSavedCreate({ snapshot, topic, analysesByNode: nextAnalysesByNode, user });
     }
 
     const existingUpdate = actions.find((item) => item && item.type === 'update' && item.code === normalizedCode);
     if (existingUpdate) {
         existingUpdate.snapshot = cloneSerializable(snapshot);
+        existingUpdate.analysesByNode = nextAnalysesByNode;
         existingUpdate.topic = topic || null;
         existingUpdate.mediaScopeKey = existingUpdate.mediaScopeKey || voiceScopeKey();
         existingUpdate.updatedAt = new Date().toISOString();
@@ -619,6 +727,7 @@ function queuePendingSavedUpdate({ code, snapshot, topic, user = currentUser } =
         type: 'update',
         code: normalizedCode,
         snapshot: cloneSerializable(snapshot),
+        analysesByNode: nextAnalysesByNode,
         mediaScopeKey: voiceScopeKey(),
         topic: topic || null,
         queuedAt: new Date().toISOString(),
@@ -1962,6 +2071,38 @@ async function uploadSavedMedia(code, exportSnapshot, { topic, mediaScopeKey } =
     return { portableSnapshot, replacedLocalFiles, deferred };
 }
 
+async function syncSavedAnalysesForCode(code, analysesByNode = null) {
+    const normalizedCode = String(code || '').trim();
+    if (!normalizedCode) return { synced: false, deferred: false };
+
+    const snapshot = analysesByNode && typeof analysesByNode === 'object'
+        ? cloneSerializable(analysesByNode)
+        : null;
+    const hasSnapshot = snapshot && Object.keys(snapshot).length > 0;
+
+    try {
+        if (hasSnapshot) {
+            await apiJson(`/api/v1/analysis/share/${encodeURIComponent(normalizedCode)}/sync`, {
+                method: 'POST',
+                body: JSON.stringify({ analysesByNode: snapshot }),
+            });
+            return { synced: true, deferred: false };
+        }
+
+        if (window.CynodeAnalysis && typeof window.CynodeAnalysis.syncSavedShareAnalyses === 'function') {
+            const synced = await window.CynodeAnalysis.syncSavedShareAnalyses(normalizedCode);
+            return { synced: !!synced, deferred: false };
+        }
+    } catch (error) {
+        if (isDeferredSyncError(error)) {
+            return { synced: false, deferred: true };
+        }
+        console.warn('Unable to sync persisted analysis snapshots after save.', error);
+    }
+
+    return { synced: false, deferred: false };
+}
+
 function buildSavedPayload(exportSnapshot, extras = {}) {
     return {
         nodeCount: exportSnapshot.nodeCount,
@@ -2048,6 +2189,7 @@ async function persistCurrentGraphAsSaved({ preferUpdate = true, fallbackTopic =
 
     const finalCode = result.code || currentSavedShareCode || null;
     const finalTopic = effectiveTopic || '';
+    const analysesByNode = getCurrentAnalysisSnapshot();
 
     if (finalCode) {
         graphTopicOrigin = `saved:${finalCode}`;
@@ -2063,6 +2205,16 @@ async function persistCurrentGraphAsSaved({ preferUpdate = true, fallbackTopic =
         const mediaResult = await uploadSavedMedia(finalCode, exportSnapshot, { topic: finalTopic || undefined });
         if (mediaResult && mediaResult.portableSnapshot) {
             saveNodeData();
+        }
+        const analysisSync = await syncSavedAnalysesForCode(finalCode, analysesByNode);
+        if (analysisSync.deferred) {
+            queuePendingSavedUpdate({
+                code: finalCode,
+                snapshot: exportSnapshot,
+                topic: finalTopic || undefined,
+                analysesByNode,
+            });
+            updateAccountProfileCard();
         }
         writeLastActiveGraphForUser(finalCode, {
             origin: 'saved',
@@ -2181,6 +2333,7 @@ async function processPendingCloudSync() {
                                 topic: action.topic || undefined,
                                 mediaScopeKey: action.mediaScopeKey,
                             });
+                            const analysisSync = await syncSavedAnalysesForCode(response.code, action.analysesByNode || null);
                             if (currentSavedShareCode === action.placeholderCode) {
                                 currentSavedShareCode = response.code;
                                 currentSavedShareUrl = response.shareUrl || createSavedGraphUrl(response.code);
@@ -2188,7 +2341,7 @@ async function processPendingCloudSync() {
                                 writeLastActiveGraphForUser(response.code, { origin: 'saved', shareUrl: currentSavedShareUrl, user: syncUser });
                                 updateUpdateSavedButton();
                             }
-                            if (mediaResult && mediaResult.deferred) {
+                            if ((mediaResult && mediaResult.deferred) || analysisSync.deferred) {
                                 remaining.push({
                                     ...action,
                                     type: 'update',
@@ -2210,11 +2363,12 @@ async function processPendingCloudSync() {
                             topic: action.topic || undefined,
                             mediaScopeKey: action.mediaScopeKey,
                         });
+                        const analysisSync = await syncSavedAnalysesForCode(action.code, action.analysesByNode || null);
                         if (response && response.shareUrl && currentSavedShareCode === action.code) {
                             currentSavedShareUrl = response.shareUrl;
                             writeLastActiveGraphForUser(action.code, { origin: 'saved', shareUrl: currentSavedShareUrl, user: syncUser });
                         }
-                        if (mediaResult && mediaResult.deferred) {
+                        if ((mediaResult && mediaResult.deferred) || analysisSync.deferred) {
                             remaining.push({
                                 ...action,
                                 updatedAt: new Date().toISOString(),
@@ -2662,8 +2816,8 @@ function renderNodePauseOverridesList(activeNodeId, { rebuildPickers = true, for
         meta.className = 'settings-node-override-meta';
         const parts = [];
         parts.push(customPause !== null ? `Custom pause ${effectivePause}s` : `Default pause ${effectivePause}s`);
-        if (nodeUrls[i] && String(nodeUrls[i]).trim()) parts.push('URL loaded');
-        else parts.push('No URL');
+        if (nodeUrls[i] && String(nodeUrls[i]).trim()) parts.push('Source loaded');
+        else parts.push('No source');
         if (hasVoice) parts.push('Voice note');
         meta.textContent = parts.join(' | ');
 
@@ -3305,6 +3459,11 @@ async function loadSavedOrSharedGraphIntoEditor(code, { origin = 'saved', enable
     setGraphTopicFromExternal(shared && typeof shared.topic === 'string' ? shared.topic : '', `${origin}:${code}`);
 
     applyRemoteMediaFromShare(shared);
+    try {
+        if (window.CynodeAnalysis && typeof window.CynodeAnalysis.hydratePersistedAnalyses === 'function') {
+            window.CynodeAnalysis.hydratePersistedAnalyses(shared && shared.analysesByNode ? shared.analysesByNode : {}, { replace: true });
+        }
+    } catch (_) { }
 
     try {
         const created = await apiJson('/api/v1/graphs', {
@@ -4252,6 +4411,16 @@ function updateRecentUrl(nodeId, isPlayingHighlight = false) {
 
     // Keep settings UI in sync with the selected node.
     try { if (typeof updateVoiceSettingsForSelectedNode === 'function') updateVoiceSettingsForSelectedNode(nodeId); } catch (_) { }
+    try {
+        if (window.CynodeAnalysis && typeof window.CynodeAnalysis.onNodeSelectionChanged === 'function') {
+            window.CynodeAnalysis.onNodeSelectionChanged({
+                nodeId,
+                url: nodeId ? getDisplayUrlForNode(nodeId) : '',
+                displayText: title || text,
+                caption: nodeId ? (nodeCaptions[nodeId] || null) : null,
+            });
+        }
+    } catch (_) { }
 }
 
 /**
@@ -4261,6 +4430,11 @@ function clearNodeConnectionsInternal({ resetGraph = false } = {}) {
     for (const key of Object.keys(nodeUrls)) delete nodeUrls[key];
     for (const key of Object.keys(nodeCaptions)) delete nodeCaptions[key];
     nodeExtraDelaySecByNode = {};
+    try {
+        if (window.CynodeAnalysis && typeof window.CynodeAnalysis.resetAnalysisState === 'function') {
+            window.CynodeAnalysis.resetAnalysisState();
+        }
+    } catch (_) { }
 
     if (resetGraph) {
         remoteMedia = { background: null, voiceByNode: {}, filesByNode: {} };
@@ -5023,7 +5197,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     importHistoryBtn = document.getElementById('importHistoryBtn');
     splitContentEl = document.getElementById('splitContent');
     previewPaneToggleBtn = document.getElementById('previewPaneToggle');
+    analysisPaneToggleBtn = document.getElementById('analysisPaneToggle');
     nodeAssociationsToggleBtn = document.getElementById('nodeAssociationsToggle');
+    sidePaneTitleEl = document.getElementById('sidePaneTitle');
+    showAssociationsPaneBtn = document.getElementById('showAssociationsPaneBtn');
+    showAnalysisPaneBtn = document.getElementById('showAnalysisPaneBtn');
+    analysisPaneEl = document.getElementById('analysisPane');
 
     const authStatus = document.getElementById('authStatus');
     const signInBtn = document.getElementById('signInBtn');
@@ -5747,6 +5926,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    if (window.CynodeAnalysis && typeof window.CynodeAnalysis.init === 'function') {
+        try {
+            await window.CynodeAnalysis.init({
+                apiJson,
+                resolveUrlForViewer,
+                isLocalFileUrl,
+                parseLocalFileUrl,
+                getGraphId: () => graphId || null,
+                getShareCode: () => currentSavedShareCode || activeShareCode || null,
+                getClientGraphKey: getAnalysisClientGraphKey,
+            });
+        } catch (error) {
+            console.warn('Analysis pane initialization failed.', error);
+        }
+    }
+
     if (!loadedShare) {
         const restoredLastGraph = await restoreLastActiveGraphForSignedInUser();
         if (restoredLastGraph && currentUser) {
@@ -5812,6 +6007,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         const picker = document.getElementById('filePicker');
         if (picker) picker.click();
     });
+    const runAnalyzeFile = () => {
+        try { showSidePaneMode('analysis'); } catch (_) { }
+        if (window.CynodeAnalysis && typeof window.CynodeAnalysis.analyzeCurrentFile === 'function') {
+            void window.CynodeAnalysis.analyzeCurrentFile();
+        }
+    };
+    const runAnalyzePage = () => {
+        try { showSidePaneMode('analysis'); } catch (_) { }
+        if (window.CynodeAnalysis && typeof window.CynodeAnalysis.analyzeCurrentPage === 'function') {
+            void window.CynodeAnalysis.analyzeCurrentPage();
+        }
+    };
+    document.getElementById('analyzeFileBtn')?.addEventListener('click', runAnalyzeFile);
+    document.getElementById('analyzePageBtn')?.addEventListener('click', runAnalyzePage);
+    document.getElementById('analysisPaneFileBtn')?.addEventListener('click', runAnalyzeFile);
+    document.getElementById('analysisPanePageBtn')?.addEventListener('click', runAnalyzePage);
     document.getElementById('filePicker')?.addEventListener('change', async (ev) => {
         const input = ev && ev.target ? ev.target : null;
         if (!requireSignedInForSharedRemix('attach files to this shared graph')) {
@@ -5870,6 +6081,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             updateNodeStatus(targetNode);
             preferred = Math.min(currentNodeCount, targetNode + 1);
             lastSelectedNode = targetNode;
+
+            try {
+                if (window.CynodeAnalysis && typeof window.CynodeAnalysis.enqueueNodeAnalysisFor === 'function') {
+                    void window.CynodeAnalysis.enqueueNodeAnalysisFor(targetNode, localUrl, { force: true });
+                }
+            } catch (_) { }
         }
 
         saveNodeData();
@@ -5887,7 +6104,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             flushPendingGraphTopicInput();
             const exportSnapshot = buildNormalizedExportSnapshot();
             if (!exportSnapshot) {
-                alert('Add at least one loaded node URL before sharing.');
+                alert('Add at least one loaded node source before sharing.');
                 return;
             }
             const containsLocalFiles = Object.values(exportSnapshot.nodeUrls || {}).some((value) => isLocalFileUrl(value));
@@ -5922,7 +6139,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const exportSnapshot = buildNormalizedExportSnapshot();
             if (!exportSnapshot) {
-                alert('Add at least one loaded node URL before saving.');
+                alert('Add at least one loaded node source before saving.');
                 return;
             }
             if (!confirmNormalizedExport('Saving this nodegraph', exportSnapshot)) return;
@@ -5947,7 +6164,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const exportSnapshot = buildNormalizedExportSnapshot();
             if (!exportSnapshot) {
-                alert('Add at least one loaded node URL before updating.');
+                alert('Add at least one loaded node source before updating.');
                 return;
             }
             if (!confirmNormalizedExport('Updating this saved nodegraph', exportSnapshot)) return;

@@ -26,3 +26,6 @@ Thumbs.db
 # Exclude local temporary/test folders
 local_test/
 /tmp/
+
+# Exclude generated local analysis persistence
+server/data/analysis/

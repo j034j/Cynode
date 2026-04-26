@@ -99,6 +99,17 @@ app.addHook("preHandler", async (req) => {
   req.user = await loadUserFromSession(req);
 });
 
+app.setErrorHandler((error: any, req, reply) => {
+  if (reply.sent) return;
+
+  if (error && error.statusCode === 401 && error.message === "unauthorized") {
+    return reply.code(401).send({ error: "unauthorized" });
+  }
+
+  req.log.error({ err: error }, "request failed");
+  return reply.send(error);
+});
+
 // Ensure sensitive/auth endpoints are not cached by intermediaries or the
 // service worker. This helps prevent stale profile data being shown after
 // changes (especially on Vercel where caching can be aggressive).

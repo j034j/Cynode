@@ -1,6 +1,6 @@
 {
   "name": "cynode",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Cynode - Desktop/Web Presentation Platform",
   "author": "Cynode Team",
   "private": true,
@@ -13,6 +13,113 @@
   },
   "type": "module",
   "main": "desktop/main.cjs",
+  "build": {
+    "appId": "com.cynode.desktop",
+    "productName": "Cynode Desktop",
+    "directories": {
+      "output": "dist-desktop",
+      "buildResources": "build"
+    },
+    "asar": true,
+    "files": [
+      "desktop/**/*",
+      "package.json"
+    ],
+    "artifactName": "Cynode-Desktop-${version}-${os}-${arch}.${ext}",
+    "protocols": [
+      {
+        "name": "Cynode Protocol",
+        "schemes": [
+          "cynode"
+        ]
+      }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "j034j",
+        "repo": "Cynode",
+        "releaseType": "release"
+      }
+    ],
+    "win": {
+      "icon": "icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "icon": "icon.icns",
+      "category": "public.app-category.productivity",
+      "darkModeSupport": true,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "icon.png",
+      "category": "Office",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Cynode Desktop",
+      "installerIcon": "icon.ico",
+      "installerHeaderIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico"
+    },
+    "portable": {
+      "artifactName": "Cynode-Desktop-${version}-portable.${ext}"
+    }
+  },
   "scripts": {
     "postinstall": "node scripts/deploy-guard.mjs",
     "dev": "tsx watch server/src/index.ts",
@@ -62,9 +169,14 @@
     "fastify": "^5.2.1",
     "fastify-raw-body": "^5.0.0",
     "fastify-type-provider-zod": "^5.0.0",
+    "mammoth": "^1.12.0",
+    "music-metadata": "^11.12.3",
+    "pdf-parse": "^2.4.5",
     "stripe": "^20.4.1",
+    "tesseract.js": "^7.0.0",
     "ua-parser-js": "^2.0.9",
     "ws": "^8.19.0",
+    "xlsx": "^0.18.5",
     "zod": "^3.24.2"
   },
   "devDependencies": {
