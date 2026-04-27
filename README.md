@@ -1,6 +1,7 @@
 # Cynode (Web App)
 
-This repo is being converted from a Chrome new-tab extension into a web application with a real backend + database.
+Cynode pioneers a new way the web and local files are navigated. These first iterations offer initial glimpses to enhanced web URL and file 
+link management and campaigns. 
 
 ## Run Locally
 
